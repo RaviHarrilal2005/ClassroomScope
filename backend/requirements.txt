@@ -1,2 +1,6 @@
 flask==3.0.3
 flask-cors==4.0.1
+
+# Needed once the pipeline_runs / pipeline_stage_runs tables exist and
+# app.py is switched to SupabaseRunStore (see docs/pipeline-coordinator.md).
+# supabase>=2.0

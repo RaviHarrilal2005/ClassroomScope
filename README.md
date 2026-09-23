@@ -1,7 +1,9 @@
-# ClassroomScope — Front-End Skeleton (in progress)
+# ClassroomScope (in progress)
 
-**Status:** early skeleton, confirmed working end-to-end. This is not a
-complete front end — it's the minimum wiring needed to prove the
+**Status:** front-end skeleton confirmed working end-to-end, and the
+backend pipeline coordinator's groundwork is in place (see
+[Pipeline coordinator](#pipeline-coordinator-in-progress) below).
+The front end is not complete — it's the minimum wiring needed to prove the
 three-layer architecture from the design doc actually connects, before
 building out the real views.
 
@@ -34,6 +36,23 @@ building out the real views.
 - Real data — everything above is served from a hardcoded stub in
   `app.py`, not the actual Core Database
 
+## Pipeline coordinator (in progress)
+
+`backend/orchestrator/` runs the agents in order —
+**Collection → Security → Analysis (4 agents at once) → Aggregation** —
+and records each stage's status. It retries collection, skips analysis
+if security screening fails, uses a fallback when sentiment fails, and
+keeps the results of stages that succeeded when another fails.
+
+- Agents are **stubs** for now; owners plug in real agents in
+  `backend/orchestrator/registry.py`
+- Run status is kept **in memory** until the `pipeline_runs` /
+  `pipeline_stage_runs` tables exist (draft SQL: `docs/pipeline_tables.sql`)
+- Endpoints: `POST /api/v1/runs`, `GET /api/v1/runs`, `GET /api/v1/runs/<id>`
+
+Full details, the agent contract, and open questions:
+[`docs/pipeline-coordinator.md`](docs/pipeline-coordinator.md)
+
 ## Running it
 
 **Backend**
@@ -41,6 +60,14 @@ building out the real views.
 cd backend
 pip install -r requirements.txt
 python app.py          # serves http://localhost:5000
+```
+
+**Pipeline demo and tests** (from `backend`)
+```
+pip install -r requirements-dev.txt
+python run_pipeline.py              # run the pipeline once, print each stage
+python run_pipeline.py --fail topic # see how a failing agent is handled
+python -m pytest tests              # run the test suite
 ```
 
 **Front end** (separate terminal)

@@ -1,0 +1,51 @@
+digraph PIPE {
+  graph [fontname="Arial", labelloc="t", fontsize=19, fontcolor="#1F4E79",
+    label=<<b>Pipeline Coordinator — Sequencing &amp; Failure Rules</b><br/><font point-size="11" color="#555555">as implemented in backend/orchestrator/coordinator.py</font><br/> >,
+    bgcolor="white", rankdir=TB, nodesep=0.3, ranksep=0.42];
+  node [fontname="Arial", fontsize=11, shape=box, style="filled,rounded", penwidth=1.3, color="#1F4E79", fontcolor="#10263B", margin="0.14,0.08"];
+  edge [fontname="Arial", fontsize=9.5, color="#1F4E79", penwidth=1.1];
+
+  start [label="POST /api/v1/runs\n(admin action or schedule)", fillcolor="#E1D5E7", color="#9673A6"];
+  collect [label="1. Collection\nup to 3 attempts, waits 2s then 4s", fillcolor="#DAE8FC"];
+  cok [label="succeeded?", shape=diamond, style="filled", fillcolor="#FFF2CC", color="#D6B656"];
+  anynew [label="any new\narticles?", shape=diamond, style="filled", fillcolor="#FFF2CC", color="#D6B656"];
+  security [label="2. Security screening\napprove or quarantine each article", fillcolor="#DAE8FC"];
+  sok [label="succeeded?", shape=diamond, style="filled", fillcolor="#FFF2CC", color="#D6B656"];
+  anyok [label="any articles\napproved?", shape=diamond, style="filled", fillcolor="#FFF2CC", color="#D6B656"];
+
+  fan [label="3. Analysis — all four at the same time\n(approved article IDs only)", fillcolor="#EAF1F8", color="#6C8EBF"];
+  sent [label="Sentiment\n(+ fallback)", fillcolor="#FCE9D6", color="#C8791E"];
+  topic [label="Topic", fillcolor="#FCE9D6", color="#C8791E"];
+  clas [label="Classification", fillcolor="#FCE9D6", color="#C8791E"];
+  stance [label="Stance", fillcolor="#FCE9D6", color="#C8791E"];
+  join [label="wait for all four", fillcolor="#EAF1F8", color="#6C8EBF"];
+  anyan [label="at least one\nsucceeded?", shape=diamond, style="filled", fillcolor="#FFF2CC", color="#D6B656"];
+
+  agg [label="4. Aggregation\ncombines the stages that succeeded", fillcolor="#DAE8FC"];
+
+  done [label="completed", fillcolor="#D5E8D4", color="#82B366"];
+  partial [label="completed_with_errors\nfailed stage recorded,\nother results kept", fillcolor="#FFF7E6", color="#C8791E"];
+  failed [label="failed\nlater stages marked skipped", fillcolor="#F8D7D0", color="#B85450"];
+  early [label="completed\n(nothing to analyze)", fillcolor="#D5E8D4", color="#82B366"];
+
+  start -> collect -> cok;
+  cok -> anynew [label="yes"];
+  cok -> failed [label="no", color="#B85450", fontcolor="#B85450"];
+  anynew -> security [label="yes"];
+  anynew -> early [label="no", style=dashed];
+  security -> sok;
+  sok -> anyok [label="yes"];
+  sok -> failed [label="no — fail closed", color="#B85450", fontcolor="#B85450"];
+  anyok -> fan [label="yes"];
+  anyok -> early [label="no", style=dashed];
+  fan -> sent; fan -> topic; fan -> clas; fan -> stance;
+  sent -> join; topic -> join; clas -> join; stance -> join;
+  join -> anyan;
+  anyan -> agg [label="yes"];
+  anyan -> failed [label="no", color="#B85450", fontcolor="#B85450"];
+  agg -> done [label="all stages\nsucceeded"];
+  agg -> partial [label="any stage\nfailed", color="#C8791E", fontcolor="#C8791E"];
+
+  { rank=same; sent; topic; clas; stance; }
+  { rank=same; done; partial; }
+}

@@ -1,0 +1,32 @@
+{
+  "folders": [
+    {
+      "name": "ClassroomScope",
+      "path": "."
+    },
+    {
+      "name": "backend",
+      "path": "backend"
+    },
+    {
+      "name": "frontend",
+      "path": "frontend"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/__pycache__": true,
+      "**/.pytest_cache": true,
+      "**/node_modules": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/frontend/dist": true
+    },
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+      "backend/tests"
+    ],
+    "python.testing.cwd": "${workspaceFolder:backend}"
+  }
+}
