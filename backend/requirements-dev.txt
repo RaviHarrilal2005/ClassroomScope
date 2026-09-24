@@ -1,3 +1,8 @@
 # For running the test suite: pip install -r requirements-dev.txt
 -r requirements.txt
 pytest>=7.0
+
+# Type checking: `python -m pyright backend/` from the repo root. Same engine
+# the editor's Pylance runs on, so it catches the same errors outside the IDE.
+# Pulls in nodeenv, which fetches a private node runtime on first run.
+pyright>=1.1.400
