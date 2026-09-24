@@ -116,7 +116,7 @@ class PipelineCoordinator:
             # the run doesn't sit at 'running' forever.
             logger.exception("Run %s: coordinator error", run_id)
             self._abort(run_id, f"Coordinator error: {describe(exc)}")
-            return self.store.get_run(run_id)
+            return self._reload(run_id)
 
     def run(self, trigger_type: str = "manual") -> RunRecord:
         """Create and execute a run synchronously (used by the CLI and tests)."""
@@ -278,6 +278,19 @@ class PipelineCoordinator:
     # ------------------------------------------------------------------
     # Recording outcomes
     # ------------------------------------------------------------------
+    def _reload(self, run_id: int) -> RunRecord:
+        """
+        Re-read a run the caller has already validated or just written to.
+
+        get_run is Optional because a caller may ask for any ID; here the row
+        has to be there, so a None means it vanished mid-run. Raising says
+        that plainly instead of handing a None back as a RunRecord.
+        """
+        run = self.store.get_run(run_id)
+        if run is None:
+            raise RuntimeError(f"Run {run_id} disappeared from the store mid-run")
+        return run
+
     def _mark_stage(self, stage_id: int, status: str, error_detail: Optional[str] = None) -> None:
         self.store.update_stage(
             stage_id, status=status, finished_at=utcnow(), error_detail=truncate(error_detail),
@@ -290,7 +303,7 @@ class PipelineCoordinator:
                 self.store.update_stage(stage.id, status=StageStatus.SKIPPED, finished_at=utcnow())
         self.store.update_run(run_id, status=status, finished_at=utcnow(), notes=truncate(notes))
         logger.info("Run %s finished: %s", run_id, status)
-        return self.store.get_run(run_id)
+        return self._reload(run_id)
 
     def _abort(self, run_id: int, notes: str) -> None:
         """Best-effort cleanup after a coordinator error."""

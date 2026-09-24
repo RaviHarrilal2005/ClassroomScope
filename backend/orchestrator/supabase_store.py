@@ -45,6 +45,20 @@ def parse_ts(value: Any) -> Optional[datetime]:
     return datetime.fromisoformat(text)
 
 
+def require_ts(value: Any, column: str) -> datetime:
+    """
+    Parse a timestamp column the schema declares NOT NULL.
+
+    A null means the column was left out of the select or the row predates
+    the constraint. Naming the column here beats letting a RunRecord carry
+    a started_at of None into the coordinator.
+    """
+    parsed = parse_ts(value)
+    if parsed is None:
+        raise RuntimeError(f"{column} is null, but the schema declares it NOT NULL.")
+    return parsed
+
+
 def to_row(fields: Dict[str, Any]) -> Dict[str, Any]:
     """Python values -> JSON values for the Supabase client."""
     return {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in fields.items()}
@@ -72,7 +86,7 @@ def run_from_row(row: Dict[str, Any]) -> RunRecord:
         id=row["id"],
         trigger_type=row["trigger_type"],
         status=row["status"],
-        started_at=parse_ts(row["started_at"]),
+        started_at=require_ts(row["started_at"], f"{RUNS_TABLE}.started_at"),
         finished_at=parse_ts(row.get("finished_at")),
         articles_collected=row.get("articles_collected"),
         notes=row.get("notes"),
