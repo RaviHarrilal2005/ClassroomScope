@@ -5,7 +5,7 @@ import pytest
 
 from helpers import stages_by_name
 from orchestrator import AgentRegistry, InMemoryRunStore, PipelineCoordinator
-from orchestrator.agents import StubAgent, stub_collection
+from orchestrator.agents import Output, OutputSource, StubAgent, stub_collection
 from orchestrator.stages import (
     AGGREGATION,
     ANALYSIS_STAGES,
@@ -18,12 +18,12 @@ from orchestrator.stages import (
 )
 
 
-def recording(stage, log, output):
+def recording(stage, log, output: OutputSource):
     """Stub that notes when it ran, then returns `output` (dict or function)."""
 
-    def run(ctx):
+    def run(ctx) -> Output:
         log.append(stage)
-        return output(ctx) if callable(output) else output
+        return output(ctx) if callable(output) else output or {}
 
     return StubAgent(f"{stage}_recording", output=run)
 
