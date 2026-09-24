@@ -1,5 +1,10 @@
 -- ClassroomScope — run-tracking tables for the pipeline coordinator
--- DRAFT for Task 6.3 (shared schema discussion). Not yet applied.
+--
+-- HISTORICAL. Both tables now exist in the Supabase project, but they
+-- were created from the ORIGINAL proposal, so the deployed schema does
+-- NOT match this file. Do not read it as a description of production.
+-- The differences are tabulated in docs/pipeline-coordinator.md under
+-- "Supabase run store"; supabase/migrations/ holds the pending fix.
 --
 -- Column names and allowed values match backend/orchestrator
 -- (models.py and stages.py). If the team changes anything here,
