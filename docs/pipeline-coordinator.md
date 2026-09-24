@@ -1,9 +1,11 @@
 # Pipeline Coordinator (SS-4)
 
-**Status: groundwork in place.** The sequencing and failure handling are
-built and tested (20 tests). Every agent is still a stub, and run status
-is kept in memory until the `pipeline_runs` / `pipeline_stage_runs`
-tables exist.
+**Status: groundwork in place, run store connected and verified.** The
+sequencing and failure handling are built and tested (20 tests). Every
+agent is still a stub. Run status goes to the Supabase `pipeline_runs` /
+`pipeline_stage_runs` tables when credentials are set, and a full
+seven-stage run has been recorded end to end. See
+[Supabase run store](#supabase-run-store).
 
 ## What it does
 
@@ -54,11 +56,14 @@ backend/
     coordinator.py          sequencing and failure handling
     runner.py               runs the pipeline on a background thread
     routes.py               API endpoints
-    store.py                where run status is saved (in-memory for now)
-    supabase_store.py       Supabase version of the store (draft, see below)
+    store.py                the RunStore interface + the in-memory implementation
+    supabase_store.py       Supabase implementation (verified against the real database)
   tests/                    20 tests (more get added as features land)
+  .env                      SUPABASE_URL / SUPABASE_KEY — gitignored, never commit
 docs/
-  pipeline_tables.sql       draft SQL for the two run-tracking tables
+  pipeline_tables.sql       the originally proposed SQL; see the note in its header
+supabase/
+  migrations/               schema changes applied with `supabase db push`
 ```
 
 ## Running it
@@ -142,28 +147,117 @@ class SentimentAgent(Agent):
 registry.register(SENTIMENT, SentimentAgent(), fallback=agents.stub_fallback(SENTIMENT))
 ```
 
-## Switching to Supabase (once the tables exist)
+## Supabase run store
 
-1. Create the tables from `docs/pipeline_tables.sql`.
-2. Uncomment `supabase>=2.0` in `requirements.txt` and reinstall.
-3. Set `SUPABASE_URL` and `SUPABASE_KEY` as environment variables.
-   **Never commit the key to the repo.**
-4. In `app.py`, replace `InMemoryRunStore()` with `SupabaseRunStore.from_env()`.
+`app.py` picks the store at startup (`build_run_store()`): Supabase when
+`SUPABASE_URL` and `SUPABASE_KEY` are both set, in-memory otherwise. The
+fallback keeps the app startable for front-end work without credentials;
+in-memory runs are lost when the process stops.
 
-`supabase_store.py` hasn't been run against a real database yet, so
-check one real run after switching.
-If row-level security is enabled on the new tables, the backend needs a
-policy that lets it write run status.
+### Setup
 
-Tests for the Supabase store get added as part of the switch, including
-one that fails if the SQL file and the code drift apart.
+1. `pip install -r requirements.txt`
+2. Create `backend/.env` from `.env.example` and fill in the key.
+   It is gitignored — **never commit it.**
+
+```
+SUPABASE_URL=https://uivjesdostuaihbjpdjr.supabase.co
+SUPABASE_KEY=sb_secret_...
+```
+
+Use the **secret** key. The publishable (`sb_publishable_…`) key has no
+privileges on the run tables — writes fail with `42501 permission
+denied`. Postgres suggests fixing that with `GRANT INSERT … TO anon`;
+don't. The publishable key ships to browsers, so that would let anyone
+forge pipeline runs.
+
+`SUPABASE_URL` is the API endpoint, not the dashboard page. A dashboard
+URL returns an HTML login page, which surfaces as a confusing
+`TypeError: string indices must be integers`.
+
+### Verified
+
+Every `RunStore` method round-trips against the real database: create,
+read, list, and update, for both runs and stages, with timestamps
+parsing back to `datetime`, including the four analysis stages writing
+concurrently.
+
+**Any `RunStore` must be thread-safe.** The coordinator runs the four
+analysis stages in a `ThreadPoolExecutor`, so all four update their rows
+at the same time. `SupabaseRunStore` holds one HTTP connection, which
+cannot be shared across threads, so every method takes a lock; without
+it the parallel stages all fail with `ReadError: [WinError 10035]` while
+collection and security pass, because those run sequentially. The writes
+are short, so serialising them costs nothing next to the agents' work.
+
+### The deployed schema differs from `pipeline_tables.sql`
+
+The tables were created from the *original* proposal, before the team
+agreed the changes listed at the top of that file. What is deployed:
+
+| | `pipeline_tables.sql` says | deployed table enforces |
+|---|---|---|
+| `stage_name` | includes `security`, final stage `aggregation` | **fixed** — see below |
+| `attempt` | `default 0` | `default 1`, `check (attempt >= 1)` |
+| unique key | `(run_id, stage_name)` | `(run_id, stage_name, attempt)` |
+| `articles_collected` | nullable, no default | `default 0` |
+| `pipeline_runs` | — | extra `one_running_pipeline` constraint |
+
+The `stage_name` check originally rejected `security` and `aggregation`,
+which killed every run at the security stage.
+`supabase/migrations/20260924000153_align_stage_name_constraint.sql`
+fixes it and **has been applied**.
+
+`create_stage` works with either `attempt` default, since it omits the
+column and lets the database decide.
+
+### The migration history is out of sync
+
+That migration was applied through the dashboard SQL editor, not
+`supabase db push`, because push refuses:
+
+> Remote migration versions not found in local migrations directory.
+
+The remote database records twelve migrations that have no files in this
+repo — they were applied from elsewhere. **Do not run the
+`supabase migration repair --status reverted ...` command the CLI
+suggests.** It does not undo anything; it deletes those rows from the
+remote history, so a teammate whose repo *does* hold those twelve files
+would have `db push` try to re-run all of them against the live
+database.
+
+The fix is `supabase db pull` (needs Docker running), which captures the
+real remote schema locally and gets the two histories agreeing. Until
+someone does that, no repo describes the deployed schema — which is how
+`security` and `aggregation` stayed missing for as long as they did.
+The migration file is idempotent, so re-applying it after a pull is
+harmless.
+
+Two smaller mismatches are left open for the team:
+
+- **`attempt` semantics.** A pending stage reads `attempt=0` from the
+  in-memory store and `attempt=1` from Supabase. Harmless once a stage
+  runs — the coordinator overwrites it — but the two stores are not
+  identical for `pending` and `skipped` stages.
+- **`articles_collected` defaults to 0**, so "collected nothing" and
+  "not known yet" cannot be told apart.
+
+Tests for the Supabase store are still to be written, including one that
+fails if the deployed schema and the code drift apart.
 
 ## Known limitations and next steps
 
 - **No per-stage timeout.** An agent that hangs holds up its run.
 - **Runs live inside the Flask process.** If the server stops mid-run,
   that run stays at `running`. A startup check that marks stale runs as
-  `failed` would fix this.
+  `failed` would fix this. With Supabase this also blocks the next run,
+  because of the `one_running_pipeline` constraint below.
+- **Concurrent runs fail with the wrong error.** `BackgroundRunner`
+  guards with an in-process lock, which only covers one Flask process.
+  The database's `one_running_pipeline` constraint is the real
+  cross-process guard, but a second process hits it as a raw `APIError`
+  from the insert rather than `RunAlreadyActive`, so the API returns 500
+  where it should return 409.
 - **No single-stage re-run yet.** Re-running just one stage needs to know
   which articles belonged to the run — see open question 3.
 - **No auth on `POST /api/v1/runs`.** Should be admin-only once login (SS-5) exists.
@@ -184,5 +278,9 @@ one that fails if the SQL file and the code drift apart.
 3. **Add `run_id` to the four results tables?** It would let us filter
    results by run and clean up a failed run's partial output. Commented
    out at the bottom of `pipeline_tables.sql`.
-4. **Stage names.** The SQL adds `security` and `stance` to the original
-   proposal and names the last stage `aggregation` rather than `aggregate`.
+4. **Stage names — resolved.** The SQL adds `security` and `stance` to
+   the original proposal and names the last stage `aggregation` rather
+   than `aggregate`. The deployed table had never been updated to match;
+   the migration in `supabase/migrations/` has now been applied and runs
+   record all seven stages. See
+   [Supabase run store](#supabase-run-store).

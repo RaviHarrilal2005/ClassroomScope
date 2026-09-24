@@ -1,6 +1,9 @@
 flask==3.0.3
 flask-cors==4.0.1
 
-# Needed once the pipeline_runs / pipeline_stage_runs tables exist and
-# app.py is switched to SupabaseRunStore (see docs/pipeline-coordinator.md).
-# supabase>=2.0
+# Run store: app.py uses SupabaseRunStore when SUPABASE_URL / SUPABASE_KEY
+# are set (see docs/pipeline-coordinator.md).
+supabase>=2.0
+
+# Loads backend/.env so SUPABASE_URL / SUPABASE_KEY reach os.environ.
+python-dotenv>=1.0

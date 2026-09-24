@@ -5,11 +5,16 @@ STATUS:
   * /api/v1/runs  — pipeline coordinator endpoints (sequencing built,
                     agents are stubs until each owner's agent is ready)
   * /api/v1/results — still a hardcoded stub for the dashboard
-  * Auth, the real data access layer, and the Supabase run store are
-    NOT connected yet — see TODOs below and docs/pipeline-coordinator.md.
+  * The run store is Supabase when SUPABASE_URL / SUPABASE_KEY are set,
+    in-memory otherwise — see build_run_store() below.
+  * Auth and the real data access layer are NOT connected yet — see the
+    TODOs below and docs/pipeline-coordinator.md.
 """
 import logging
+import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify
 from flask_cors import CORS
 
@@ -20,6 +25,30 @@ from orchestrator import (
     build_default_registry,
 )
 from orchestrator.routes import create_runs_blueprint
+from orchestrator.supabase_store import SupabaseRunStore
+
+logger = logging.getLogger(__name__)
+
+# Reads backend/.env whatever the working directory. Real environment
+# variables win, so deployments can set them without a file.
+load_dotenv(Path(__file__).with_name(".env"))
+
+
+def build_run_store():
+    """
+    Supabase when SUPABASE_URL / SUPABASE_KEY are set, in-memory otherwise.
+
+    The fallback keeps the app startable for front-end work without
+    credentials; without it, a missing variable is a hard startup failure.
+    In-memory runs are lost when the process stops.
+    """
+    if not (os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_KEY")):
+        logger.warning(
+            "SUPABASE_URL / SUPABASE_KEY not set - using InMemoryRunStore; runs will not persist"
+        )
+        return InMemoryRunStore()
+    logger.info("Using SupabaseRunStore for pipeline runs")
+    return SupabaseRunStore.from_env()
 
 
 def create_app(runner=None):
@@ -31,9 +60,7 @@ def create_app(runner=None):
     CORS(app)  # TODO: restrict origins before this leaves localhost
 
     if runner is None:
-        # TODO: switch to SupabaseRunStore.from_env() once the
-        # pipeline_runs / pipeline_stage_runs tables exist (Task 6.3).
-        coordinator = PipelineCoordinator(build_default_registry(), InMemoryRunStore())
+        coordinator = PipelineCoordinator(build_default_registry(), build_run_store())
         runner = BackgroundRunner(coordinator)
     app.register_blueprint(create_runs_blueprint(runner))
 
