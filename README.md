@@ -1,144 +1,183 @@
-# ClassroomScope (in progress)
+# INTERFACE.md — Classification Subsystem
 
-**Status:** front-end skeleton confirmed working end-to-end, and the
-backend pipeline coordinator's groundwork is in place (see
-[Pipeline coordinator](#pipeline-coordinator-in-progress) below).
-The front end is not complete — it's the minimum wiring needed to prove the
-three-layer architecture from the design doc actually connects, before
-building out the real views.
+**Owner:** Juan Reyes
+**Consumers:** Orchestrator (Ravi), Results Aggregator, Web Dashboard
+**Last updated:** September 28, 2026
+**Status:** Complete and tested in isolation. Ready for orchestration integration.
 
-## What's working right now
+## 1. Purpose
 
-- Flask backend (`backend/app.py`) serving two endpoints:
-  - `GET /api/v1/health` — reachability check
-  - `GET /api/v1/results` — stub data shaped like what the real
-    Aggregation Service will eventually return
-- React front end (`frontend/`) with the three layers from the design
-  doc partially built:
-  - **Data access layer** (`src/api/apiClient.js`) — the single client
-    that talks to Flask
-  - **State layer** (`src/state/ViewStateContext.jsx`) — holds results,
-    loading, and error state
-  - **Presentation layer** (`src/components/DashboardShell.jsx`) — one
-    view, rendering sentiment breakdown and an article list pulled
-    live from the Flask stub
-- Verified end to end: `npm run dev` + `python app.py` together produce
-  a page that fetches real JSON from Flask and renders it. No mock data
-  baked into the front end.
+This document defines the callable interface of the Classification
+subsystem (WBS 5.9, 5.10) so the Orchestrator can sequence it inside
+the full pipeline. It covers function signatures, database contracts,
+preconditions, and postconditions.
 
-## What's NOT built yet
+## 2. Dependency on Collection
 
-- FilterPanel, real charts (VisualizationViews), ExportControls,
-  AdminConsole — see design doc Section 2 for what each needs to do
-- Auth / session context (SS-5 login) — apiClient has TODOs where the
-  token will attach
-- Run-status poller
-- Real data — everything above is served from a hardcoded stub in
-  `app.py`, not the actual Core Database
+Classification runs AFTER the Collection subsystem has populated
+`articles` with `is_relevant = true` AND `processing_status = 'success'`.
 
-## Pipeline coordinator (in progress)
+If those conditions aren't met, both classifiers run cleanly but
+find zero rows to process. No errors, no wasted API calls.
 
-`backend/orchestrator/` runs the agents in order —
-**Collection → Security → Analysis (4 agents at once) → Aggregation** —
-and records each stage's status. It retries collection, skips analysis
-if security screening fails, uses a fallback when sentiment fails, and
-keeps the results of stages that succeeded when another fails.
+## 3. Two classifiers (F.10 comparison)
 
-- Agents are **stubs** for now; owners plug in real agents in
-  `backend/orchestrator/registry.py`
-- Run status is written to **Supabase** (`pipeline_runs` /
-  `pipeline_stage_runs`) when `SUPABASE_URL` and `SUPABASE_KEY` are set,
-  and kept in memory otherwise, so the app still starts without
-  credentials. Every store method is verified against the real database.
-- Verified end to end against the real database: a full run records all
-  seven stages, finishing `completed`. Note `POST /api/v1/runs` returns
-  `202` straight away and the pipeline continues on a background thread,
-  so polling immediately shows `running` with stages still `pending` —
-  that is normal, not a stall.
-- Endpoints: `POST /api/v1/runs`, `GET /api/v1/runs`, `GET /api/v1/runs/<id>`
+This subsystem implements two independent classifiers that write to
+the same table distinguished by a `classifier` tag:
 
-Full details, the agent contract, and open questions:
-[`docs/pipeline-coordinator.md`](docs/pipeline-coordinator.md)
+| Classifier | Module | Method | Tag |
+|---|---|---|---|
+| Baseline | `classify_baseline.py` | Keyword counting | `baseline_keyword` |
+| LLM | `classify_luna.py` | GPT-5.6-Luna (zero-shot) | `gpt-5.6-luna` |
 
-## Running it
+Both output the same three fields: stakeholder category, source
+type, and confidence scores. This enables the F.10 comparison
+deliverable — a direct agreement matrix between traditional NLP
+and LLM-based classification.
 
-**Backend**
-```
-cd backend
-pip install -r requirements.txt
-cp .env.example .env      # then fill in SUPABASE_KEY
-python app.py             # serves http://localhost:5000
-```
+## 4. Function contracts
 
-`backend/.env` holds `SUPABASE_URL` and `SUPABASE_KEY`; it is gitignored
-and must never be committed. Use the **secret** (`sb_secret_…`) key — the
-publishable key has no write access to the run tables. Without a `.env`
-the backend still runs, but keeps run status in memory only.
+### 4.1 `classify_baseline.run(limit=None)`
 
-**Pipeline demo and tests** (from `backend`)
-```
-pip install -r requirements-dev.txt
-python run_pipeline.py              # run the pipeline once, print each stage
-python run_pipeline.py --fail topic # see how a failing agent is handled
-python -m pytest tests              # run the test suite
-```
+**Signature:**
+```python
+def run(limit: int | None = None) -> dict
 
-**Front end** (separate terminal)
-```
-cd frontend
-npm install
-npm run dev             # serves http://localhost:5173
-```
+Arguments:
 
-Open `http://localhost:5173` — you should see live data pulled from
-the Flask stub, not placeholder text.
+limit — max articles to classify, or None for all pending
 
-## Next steps (planned)
+Returns:
 
-1. Build FilterPanel and wire it into ViewStateContext
-2. Swap the plain HTML list/table for a real charting library
-3. Connect apiClient to the real Data Access Layer once SS-1/SS-2/SS-3
-   are integrated (see WBS, tasks under 4.5)
-4. Add auth context once SS-5 login exists
+python
+{"classified": int, "skipped_existing": int, "failed": int}
+Side effects: Inserts rows into classification_results with
+classifier = 'baseline_keyword'.
 
-## This week: initial site design refinement
+Preconditions: Rows exist with is_relevant = true AND
+processing_status = 'success' AND no existing
+classification_results row for this classifier and article.
 
-The skeleton above is functionally wired but visually bare — this
-week's focus is designing and building out the views that don't exist
-yet, not touching backend/data logic. Everything reads live data
-already flowing through `apiClient.js` → `ViewStateContext.jsx` →
-`DashboardShell.jsx`; new components should plug into that same state
-layer rather than fetching independently.
+Idempotent: Yes — queries existing classifications and skips
+already-processed articles.
 
-**Components to design and build** (currently missing from
-`frontend/src/components/`):
+Rate limiting: None. Pure local text processing.
 
-1. **FilterPanel** — controls for narrowing the results shown in
-   `DashboardShell`. Should read/write filter state via
-   `ViewStateContext.jsx` rather than owning its own state.
-2. **VisualizationViews** — replace the plain sentiment
-   breakdown/article list in `DashboardShell.jsx` with real charts.
-   Pick a charting library as a team before splitting up chart types.
-3. **ExportControls** — UI for exporting the current view/results
-   (format TBD — propose an approach if it's not obvious from the
-   design doc).
-4. **AdminConsole** — a separate view/route, not part of the main
-   dashboard; scope it small for now (whatever the design doc
-   describes as minimum viable).
+4.2 classify_luna.run(limit=None)
+Signature:
 
-**Guidelines while doing this:**
+python
+def run(limit: int | None = None) -> dict
+Arguments:
 
-- Follow the three-layer split already established (data access /
-  state / presentation) — don't reach into `apiClient.js` directly
-  from a new component.
-- No new mock data — everything should render from the existing Flask
-  stub (`backend/app.py`) or explicitly note where the stub is missing
-  a field you need, so we can add it.
-- Keep PRs scoped to one component at a time so they're easy to
-  review.
-- If a component's requirements are ambiguous, check the design doc
-  (Section 2) first; if still unclear, flag it rather than guessing.
+limit — max articles to classify, or None for all pending
 
-**Not in scope this week:** auth/login (SS-5), the run-status poller,
-or connecting to the real Aggregation Service/Core Database — those
-come later per the steps above.
+Returns:
+
+python
+{"classified": int, "skipped_existing": int, "failed": int}
+Side effects: Inserts rows into classification_results with
+classifier = 'gpt-5.6-luna'.
+
+Preconditions: Rows exist with is_relevant = true AND
+processing_status = 'success' AND no existing
+classification_results row for this classifier and article.
+
+Idempotent: Yes.
+
+Rate limiting: Sleeps 0.3 seconds between API calls. On 429,
+increase to 1 second and re-run (safe).
+
+External dependency: FAU Trussed AI portal endpoint
+(TRUSSED_BASE_URL and TRUSSED_API_KEY in .env).
+
+5. Database contract — classification_results
+Read by: classify_baseline (skip check), classify_luna (skip
+check), Analysis Agents, Dashboard
+Written by: classify_baseline (INSERT), classify_luna (INSERT)
+
+Column	Type	Notes
+id	bigint PK	auto
+article_id	bigint FK	→ articles.id
+stakeholder_category	text	students / educators / administrators / policymakers / parents / researchers / undetermined
+confidence	float	0.0–1.0
+source_type	text	news_outlet / trade_publication / academic / government / blog
+source_type_confidence	float	
+classifier	text	'baseline_keyword' or 'gpt-5.6-luna'
+classified_at	timestamptz	
+Unique constraint: (article_id, classifier) — one row per
+article per classifier.
+
+6. Category definitions
+6.1 Stakeholder categories
+The stakeholder category is who the article is primarily about
+(not who wrote it, not who it is written for).
+
+Category	Definition
+students	Article's primary subject is student experience, learning, or behavior
+educators	Primary subject is teaching, instruction, or faculty practice
+administrators	Primary subject is institutional leadership, deans, policy implementation
+policymakers	Primary subject is regulation, legislation, or government action
+parents	Primary subject is family or parental concerns
+researchers	Primary subject is academic study or research findings
+undetermined	No clear single subject, or confidence below threshold
+6.2 Source types
+Assigned by domain lookup (same mapping in both classifiers).
+
+Source type	Examples
+news_outlet	edweek.org, insidehighered.com, nytimes.com
+trade_publication	eschoolnews.com, educationdive.com
+academic	.edu domains
+government	.gov domains
+blog	default fallback
+7. Integration notes for the Orchestrator
+Return summary dicts. The run() functions currently print
+to stdout. Signatures above show the recommended return shape.
+
+Run both classifiers sequentially. They write to the same
+table but with different classifier tags. Running them in
+parallel risks duplicate-work on the same articles.
+
+No dependency between the two classifiers. They don't read
+each other's output. Order of execution doesn't matter.
+
+8. F.10 comparison query
+To produce the baseline ↔ LLM agreement matrix:
+
+sql
+SELECT
+    b.stakeholder_category AS baseline,
+    t.stakeholder_category AS luna,
+    COUNT(*) AS n
+FROM classification_results b
+JOIN classification_results t
+    ON b.article_id = t.article_id
+WHERE b.classifier = 'baseline_keyword'
+  AND t.classifier = 'gpt-5.6-luna'
+GROUP BY 1, 2
+ORDER BY n DESC;
+9. Known limitations
+Baseline "students" bias. Keyword classifier over-selects
+"students" because it's a high-frequency word in education text
+regardless of article subject. Confirmed via manual review of
+disagreement cases.
+
+Prompt injection surface. classify_luna passes raw article
+text to the LLM. Current mitigation: 8,000-char truncation and
+a JSON-only system message. Full sanitization is owned by the
+Security subsystem (Section 2.9).
+
+No transformer fallback. If the Trussed endpoint is down,
+classify_luna fails cleanly but the classification set is
+incomplete. Re-running later resumes where it left off.
+
+10. Current state (as of Sept 28, 2026)
+Articles classified (baseline): 248
+
+Articles classified (gpt-5.6-luna): 248
+
+Baseline ↔ Luna agreement: 50.8%
+
+Top agreements: students (81), educators (41)
+
+Top disagreements: students↔educators (48), students↔administrators (31)
