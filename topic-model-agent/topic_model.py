@@ -10,55 +10,59 @@ from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer, ENGLISH_STOP_WORDS
 from umap import UMAP
 
-#Loads CSV file of articles
-articles = pd.read_csv("articles_rows.csv").drop_duplicates(subset="content_hash").reset_index(drop=True)
-articles = articles[(articles["is_relevant"] == True) & (articles["processing_status"] == "success") & articles["clean_content"].fillna("").str.strip().ne("")].copy()
-articles = articles.reset_index(drop = True)
+def analyze_topics():
 
-article_content = articles["clean_content"].tolist()
+    #Loads CSV file of articles
+    articles = pd.read_csv("articles_rows.csv").drop_duplicates(subset="content_hash").reset_index(drop=True)
+    articles = articles[(articles["is_relevant"] == True) & (articles["processing_status"] == "success") & articles["clean_content"].fillna("").str.strip().ne("")].copy()
+    articles = articles.reset_index(drop = True)
 
-def build_topic_model(min_topic_size: int = 10):
-    #Model to filter out stop words
-    domain_stop_words = {
-    "ai", "artificial", "intelligence", "education", "educational",
-    "student", "students", "school", "schools", "teacher", "teachers",
-    "said", "says", "say", "new", "use", "used", "using",
-    "educators", "tools", "tool", "help", "systems", "generated",
-    "technology", "information", "districts", "district", "automated", "support", "12"
-    }
+    article_content = articles["clean_content"].tolist()
 
-    vectorizer_model = CountVectorizer(stop_words=list(ENGLISH_STOP_WORDS | domain_stop_words), ngram_range=(1, 1), min_df=1, max_df=0.9)
+    def build_topic_model(min_topic_size: int = 10):
+        #Model to filter out stop words
+        domain_stop_words = {
+        "ai", "artificial", "intelligence", "education", "educational",
+        "student", "students", "school", "schools", "teacher", "teachers",
+        "said", "says", "say", "new", "use", "used", "using",
+        "educators", "tools", "tool", "help", "systems", "generated",
+        "technology", "information", "districts", "district", "automated", "support", "12"
+        }
 
-    umap_model = UMAP(n_neighbors=8, n_components=5, min_dist=0.0, metric="cosine", random_state=42)
+        vectorizer_model = CountVectorizer(stop_words=list(ENGLISH_STOP_WORDS | domain_stop_words), ngram_range=(1, 1), min_df=1, max_df=0.9)
 
-    embedding_model = SentenceTransformer("all-mpnet-base-v2")
+        umap_model = UMAP(n_neighbors=8, n_components=5, min_dist=0.0, metric="cosine", random_state=42)
 
-    topic_model = BERTopic(embedding_model=embedding_model, vectorizer_model=vectorizer_model, umap_model=umap_model, min_topic_size=min_topic_size, nr_topics=None)
+        embedding_model = SentenceTransformer("all-mpnet-base-v2")
 
-    return topic_model, embedding_model
+        topic_model = BERTopic(embedding_model=embedding_model, vectorizer_model=vectorizer_model, umap_model=umap_model, min_topic_size=min_topic_size, nr_topics=None)
 
-def build_topic_results(articles):
-    # Keep the original article ID so the aggregator can match other agents' results.
-    return articles[["id", "topic_id", "topic_label"]].rename(
-        columns={"id": "article_id"}
-    ).copy()
+        return topic_model, embedding_model
 
-topic_model, embedding_model = build_topic_model()
+    def build_topic_results(articles):
+        # Keep the original article ID so the aggregator can match other agents' results.
+        return articles[["id", "topic_id", "topic_label"]].rename(
+            columns={"id": "article_id"}
+        ).copy()
 
-embeddings = embedding_model.encode(article_content)
+    topic_model, embedding_model = build_topic_model()
 
-#Find topics
-topics, probabilities = topic_model.fit_transform(article_content, embeddings)
+    embeddings = embedding_model.encode(article_content)
 
-topic_info = topic_model.get_topic_info().set_index("Topic")
+    #Find topics
+    topics, probabilities = topic_model.fit_transform(article_content, embeddings)
 
-if -1 in topic_info.index:
-    topic_info.loc[-1, "Name"] = "Unassigned"
+    topic_info = topic_model.get_topic_info().set_index("Topic")
 
-articles["topic_id"] = topics
-articles["topic_label"] = articles["topic_id"].map(topic_info["Name"])
+    if -1 in topic_info.index:
+        topic_info.loc[-1, "Name"] = "Unassigned"
 
-pd.set_option("display.max_colwidth", 200)
-print(topic_model.get_topic_info()[["Topic", "Count", "Representation"]].to_string(index=False))
-print()
-print(articles.groupby("topic_label").size().sort_values(ascending=False))
+    articles["topic_id"] = topics
+    articles["topic_label"] = articles["topic_id"].map(topic_info["Name"])
+
+    topic_results = build_topic_results(articles)
+
+    return topic_results
+
+if __name__ == "__main__":
+    results = analyze_topics()
