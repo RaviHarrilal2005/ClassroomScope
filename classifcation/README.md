@@ -1,4 +1,4 @@
-# INTERFACE.md — Classification Subsystem
+# README.md — Classification Subsystem
 
 **Owner:** Juan Reyes\
 **Consumers:** Orchestrator (Ravi), Results Aggregator, Web Dashboard\
