@@ -173,10 +173,10 @@ stance agent as a parallel public-discourse corpus.
 
 ### 7. Preconditions and pipeline ordering
 
-1. fetch_all()              → produces article dicts (no DB writes)
-2. insert_articles(...)     → articles rows exist with is_relevant=NULL
-3. filter_relevance.run()   → is_relevant set to TRUE/FALSE
-4. preprocess.run()         → processing_status set for relevant rows
+1. `fetch_all()`              → produces article dicts (no DB writes)
+2. `insert_articles(...)`     → articles rows exist with `is_relevant=NULL`
+3. `filter_relevance.run()`   → `is_relevant` set to `TRUE`/`FALSE`
+4. `preprocess.run()`         → `processing_status` set for relevant rows
 
 Stages are idempotent and self-filtering, so calling them out of
 order is safe but produces no work.
