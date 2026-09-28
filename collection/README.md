@@ -1,4 +1,4 @@
-# INTERFACE.md — Collection & Preprocessing Subsystem
+# README.md — Collection & Preprocessing Subsystem
 
 **Owner:** Juan Reyes\
 **Consumers:** Orchestrator (Ravi), Analysis Agents, Security Subsystem\
