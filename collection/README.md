@@ -134,7 +134,7 @@ Posts first (FK requirement). Orphan comments filtered before insert.
 
 Not part of the runtime pipeline. One-time import only.
 
-### 5. Database contract — `articles`
+## 5. Database contract — `articles`
 **Read by:** filter_relevance, preprocess
 **Written by:** db.insert_articles (INSERT), filter_relevance
 (UPDATE is_relevant), preprocess (UPDATE clean_content + status)
@@ -163,7 +163,7 @@ filter runs → is_relevant=TRUE/FALSE
 preprocess runs → processing_status='success'/'failed'/'paywalled'
 ```
 
-### 6. Reddit tables
+## 6. Reddit tables
 Populated by the one-time `ingest_reddit` script. Not touched by
 the runtime pipeline. Available to the Cross-Corpus Matcher and
 stance agent as a parallel public-discourse corpus.
@@ -171,7 +171,7 @@ stance agent as a parallel public-discourse corpus.
 - `reddit_posts` — one row per Reddit submission (~4,100 rows)
 - `reddit_comments` — one row per comment, FK to post (~54,000 rows)
 
-### 7. Preconditions and pipeline ordering
+## 7. Preconditions and pipeline ordering
 
 1. `fetch_all()`              → produces article dicts (no DB writes)
 2. `insert_articles(...)`     → articles rows exist with `is_relevant=NULL`
@@ -181,7 +181,7 @@ stance agent as a parallel public-discourse corpus.
 Stages are idempotent and self-filtering, so calling them out of
 order is safe but produces no work.
 
-### 8. Integration notes for the Orchestrator
+## 8. Integration notes for the Orchestrator
 The scripts were built for manual execution. Two changes improve
 coordination:
 
@@ -190,7 +190,7 @@ to stdout. Signatures above show the recommended return shape.
 2. **Structured logging.** Progress lines go to stdout via
 `print()`. The Orchestrator may want a structured logger.
 
-### 9. Known limitations
+## 9. Known limitations
 - Paywall handling — 403 responses mark the row paywalled
 without retry. New outlets may need per-domain handling.
 - Relevance keyword drift — filter uses hand-tuned keyword
@@ -200,7 +200,7 @@ invocation. Handed off to the Orchestrator per WBS 8.3.
 - Domain rate limits — preprocess sleeps 1s between fetches;
 running it in parallel across the same outlet may trigger blocks.
 
-### 10. Current state (as of Sept 28, 2026)
+## 10. Current state (as of Sept 28, 2026)
 - Articles fetched: 745
 - Articles stored (post-dedup): 709
 - Marked relevant: 279
