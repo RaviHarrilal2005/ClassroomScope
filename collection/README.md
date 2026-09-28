@@ -205,6 +205,6 @@ running it in parallel across the same outlet may trigger blocks.
 - Articles stored (post-dedup): 709
 - Marked relevant: 279
 - Preprocessed successfully: 248
-- Reddit posts: ~4,100
-- Reddit comments: ~54,000
+- Reddit posts: 2,820
+- Reddit comments: 39,597
 
