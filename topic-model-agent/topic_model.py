@@ -46,10 +46,19 @@ def load_articles():
 
 def analyze_topics(articles):
 
+    if articles.empty:
+        print("No eligible articles to analyze.")
+        return pd.DataFrame(columns=["article_id", "topic"])
+
+    # Your existing deduplication and filtering continue here.
     #Loads CSV file of articles
     articles = articles.drop_duplicates(subset="content_hash").reset_index(drop=True)
     articles = articles[(articles["is_relevant"] == True) & (articles["processing_status"] == "success") & articles["clean_content"].fillna("").str.strip().ne("")].copy()
     articles = articles.reset_index(drop = True)
+
+    if articles.empty:
+        print("No eligible articles to analyze.")
+        return pd.DataFrame(columns=["article_id", "topic"])
 
     article_content = articles["clean_content"].tolist()
 
