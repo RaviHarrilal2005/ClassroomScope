@@ -15,19 +15,16 @@ from sklearn.feature_extraction.text import CountVectorizer, ENGLISH_STOP_WORDS
 from umap import UMAP
 
 REVIEWED_LABELS = {
-    "0_city_framework_trends_taskforce":
+    # Labels observed in the latest full-data run.
+    "0_learning_according_policy_department":
         "AI adoption and policies in schools",
-
-    "1_cheating_harvard_law_chatgpt":
+    "1_university_work_cheating_like":
         "Academic integrity and assessment",
-
-    "2_covid_al_sources_awareness":
+    "2_social_media_learning_health":
         "General education and school operations",
-
-    "3_financial_enrollment_barrow_dei":
+    "3_university_college_financial_programs":
         "Education access, finances, and governance",
-
-    "4_reply_06_09_cheating":
+    "4_learning_thinking_reply_percent":
         "Critical thinking and AI dependence",
 }
 
@@ -96,7 +93,7 @@ def analyze_topics(articles, topic_count=None):
         "technology", "information", "districts", "district", "automated", "support", "12"
         }
 
-        vectorizer_model = CountVectorizer(stop_words=list(ENGLISH_STOP_WORDS | domain_stop_words), ngram_range=(1, 1), min_df=1, max_df=0.9)
+        vectorizer_model = CountVectorizer(stop_words=list(ENGLISH_STOP_WORDS | domain_stop_words), ngram_range=(1, 1), min_df=1, max_df=1.0)
 
         umap_model = UMAP(n_neighbors=8, n_components=5, min_dist=0.0, metric="cosine", random_state=42)
 
@@ -107,7 +104,8 @@ def analyze_topics(articles, topic_count=None):
         return topic_model, embedding_model
 
     def build_topic_results(articles):
-        return articles[["id", "topic_label"]].rename(
+
+        return articles[["id", "topic_id", "topic_label", "topic_keywords"]].rename(
         columns={
             "id": "article_id",
             "topic_label": "topic",
@@ -128,8 +126,21 @@ def analyze_topics(articles, topic_count=None):
 
     articles["topic_id"] = topics
     articles["topic_label"] = articles["topic_id"].map(topic_info["Name"])
-
     articles["topic_label"] = articles["topic_label"].replace(REVIEWED_LABELS)
+
+    topic_keywords = {
+    topic_id: "; ".join(
+        word for word, _ in (topic_model.get_topic(topic_id) or [])
+    )
+    for topic_id in set(topics)
+    if topic_id != -1
+}
+
+    articles["topic_keywords"] = (
+        articles["topic_id"]
+        .map(topic_keywords)
+        .fillna("")
+    )
 
     topic_results = build_topic_results(articles)
 
