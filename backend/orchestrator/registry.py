@@ -14,7 +14,6 @@ module never reaches for Supabase credentials.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Dict, Iterable, List, Optional
 
 from . import agents
@@ -120,13 +119,16 @@ def _luna_configured() -> bool:
     """
     Whether the LLM classifier has real credentials.
 
+    optional_key loads backend/.env itself. Reading os.environ directly
+    only works when something else happened to load it first, which
+    build_default_registry(live=True) does not -- so `--live` silently
+    fell back to the keyword scorer however good the key was.
+
     A .env copied from .env.example has TRUSSED_API_KEY set to a
     placeholder. Treating that as configured makes the LLM classifier
     the primary agent, so every run burns its retries on a 401 before
-    falling back to the keyword scorer. A placeholder means unset.
+    falling back. A placeholder means unset.
     """
-    from agents.config import is_placeholder
+    from agents.config import optional_key
 
-    return not is_placeholder(os.environ.get("TRUSSED_API_KEY")) and bool(
-        (os.environ.get("TRUSSED_BASE_URL") or "").strip()
-    )
+    return bool(optional_key("TRUSSED_API_KEY") and optional_key("TRUSSED_BASE_URL"))

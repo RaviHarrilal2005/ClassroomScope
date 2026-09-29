@@ -12,6 +12,19 @@ from orchestrator import InMemoryRunStore, PipelineCoordinator, build_default_re
 
 
 
+@pytest.fixture(autouse=True)
+def no_dotenv(monkeypatch):
+    """
+    Keep backend/.env out of the test suite.
+
+    agents/config.py loads it on every credential read, so without this
+    a test that clears a variable gets it straight back from the file,
+    and the suite's behaviour depends on whose machine it runs on. Tests
+    that care about a credential set it with monkeypatch.setenv.
+    """
+    monkeypatch.setattr("agents.config.load_env", lambda: None)
+
+
 @pytest.fixture
 def sleeps():
     """Backoff delays the coordinator asked for — recorded instead of actually waited."""

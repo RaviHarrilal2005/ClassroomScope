@@ -31,6 +31,7 @@ Which stages are real (see docs/pipeline-coordinator.md):
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from orchestrator.agents import Agent
@@ -285,10 +286,14 @@ class ClassificationAgent(Agent):
 
     name = "classification"
 
-    def __init__(self, classifier: str = "baseline") -> None:
+    # Seconds between LLM calls, matching the standalone script.
+    CALL_INTERVAL = 0.3
+
+    def __init__(self, classifier: str = "baseline", call_interval: Optional[float] = None) -> None:
         if classifier not in ("baseline", "luna"):
             raise ValueError(f"classifier must be 'baseline' or 'luna', got '{classifier}'")
         self.classifier = classifier
+        self.call_interval = self.CALL_INTERVAL if call_interval is None else call_interval
         self.name = f"classification_{classifier}"
 
     def run(self, ctx: RunContext) -> Dict[str, Any]:
@@ -339,7 +344,12 @@ class ClassificationAgent(Agent):
             )
 
         records, failures = [], []
-        for row in rows:
+        for index, row in enumerate(rows):
+            # One call per article. The standalone script paces itself and
+            # so does this: a run over the whole backlog would otherwise
+            # be a few hundred requests as fast as the loop can issue them.
+            if index:
+                time.sleep(self.call_interval)
             prompt = luna.build_prompt(row.get("title"), row.get("clean_content") or "")
             category, confidence, error = luna.call_luna(prompt)
             if category is None:
