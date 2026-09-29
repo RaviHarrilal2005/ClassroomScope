@@ -87,7 +87,7 @@ package without touching sequencing code.
 |---|---|---|
 | Collection | **real** | `agents/collection/` — NewsAPI, GNews and six RSS feeds, then dedupe, relevance filter and body extraction |
 | Security | **real** | `agents/security/` — sanitization filter; see the gap below |
-| Classification | **real** | `agents/classification/` — keyword scorer, or the LLM classifier when `TRUSSED_API_KEY` is set |
+| Classification | **real** | `agents/classification/` — LLM classifier when `TRUSSED_API_KEY` is set, keyword scorer otherwise or as its fallback |
 | Sentiment | stub | no implementation on any branch yet |
 | Stance | stub | no implementation on any branch yet |
 | Topic | stub | `agents/topic/topic_model.py` works standalone — see below |
@@ -317,7 +317,39 @@ Use the **secret** key. The publishable (`sb_publishable_…`) key has no
 privileges on the run tables — writes fail with `42501 permission
 denied`. Postgres suggests fixing that with `GRANT INSERT … TO anon`;
 don't. The publishable key ships to browsers, so that would let anyone
-forge pipeline runs.
+forge pipeline runs — or, for `articles`, inject content straight into
+the corpus the analysis agents read.
+
+### Which key unlocks what
+
+Measured against the live project with a publishable key:
+
+| | publishable key | secret key |
+|---|---|---|
+| Read `articles` | yes | yes |
+| **Insert `articles`** (collection) | **no — 42501** | yes |
+| Write `classification_results` | yes | yes |
+| Write `pipeline_runs` / `pipeline_stage_runs` | **no — 42501** | yes |
+
+So with a publishable key the pipeline runs, but only in `--backlog`
+mode, and nothing about the run is recorded: `build_run_store()` falls
+back to `InMemoryRunStore` and the history is lost when the process
+stops. Collection fails all three attempts and the run ends `failed`
+with the Postgres hint in `error_detail`.
+
+### Two things that look like bugs and are not
+
+- **`SUPABASE_URL` set to the dashboard page.** Copying the project URL
+  out of the browser gives
+  `https://supabase.com/dashboard/project/<ref>`, which serves an HTML
+  login page. `agents/supabase_client.py` rejects it at startup with a
+  message naming the problem; the run store used to surface it much
+  later as `TypeError: string indices must be integers`. The value you
+  want is `https://<ref>.supabase.co`.
+- **A placeholder key.** Every key in `.env.example` ships with a
+  `your-…` value. `agents/config.py` treats those as unset, so a source
+  or classifier is skipped rather than making requests that all come
+  back 401.
 
 `SUPABASE_URL` is the API endpoint, not the dashboard page. A dashboard
 URL returns an HTML login page, which surfaces as a confusing
