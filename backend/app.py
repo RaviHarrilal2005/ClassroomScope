@@ -41,10 +41,20 @@ def build_run_store():
     The fallback keeps the app startable for front-end work without
     credentials; without it, a missing variable is a hard startup failure.
     In-memory runs are lost when the process stops.
+
+    SUPABASE_ANON_KEY is deliberately NOT accepted here, though the
+    agents take it: the publishable key cannot write pipeline_runs or
+    pipeline_stage_runs (42501), so using it would trade a clear warning
+    at startup for every run failing halfway through.
     """
-    if not (os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_KEY")):
+    missing = [name for name in ("SUPABASE_URL", "SUPABASE_KEY") if not os.environ.get(name)]
+    if missing:
+        detail = " and ".join(missing)
+        if "SUPABASE_KEY" in missing and os.environ.get("SUPABASE_ANON_KEY"):
+            detail += (" (SUPABASE_ANON_KEY is set, but the publishable key cannot"
+                       " write the run tables - use the sb_secret_... key)")
         logger.warning(
-            "SUPABASE_URL / SUPABASE_KEY not set - using InMemoryRunStore; runs will not persist"
+            "%s not set - using InMemoryRunStore; runs will not persist", detail
         )
         return InMemoryRunStore()
     logger.info("Using SupabaseRunStore for pipeline runs")
