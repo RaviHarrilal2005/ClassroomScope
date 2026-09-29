@@ -9,7 +9,7 @@ import sys
 import csv
 from datetime import datetime, timezone
 
-from db import _supabase
+from ..supabase_client import get_client
 
 
 def parse_utc(value):
@@ -90,7 +90,7 @@ def ingest(path, dataset_source):
     # Posts first — comments FK to them.
     if posts:
         try:
-            _supabase.table("reddit_posts").upsert(
+            get_client().table("reddit_posts").upsert(
                 posts, on_conflict="id"
             ).execute()
             print(f"Upserted {len(posts)} posts.")
@@ -104,7 +104,7 @@ def ingest(path, dataset_source):
     for i in range(0, len(comments), batch_size):
         batch = comments[i:i + batch_size]
         try:
-            _supabase.table("reddit_comments").upsert(
+            get_client().table("reddit_comments").upsert(
                 batch, on_conflict="id"
             ).execute()
             inserted += len(batch)

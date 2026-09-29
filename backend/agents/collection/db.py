@@ -1,20 +1,11 @@
 # db.py
 """Supabase write layer for ClassroomScope articles."""
 
-import os
 import hashlib
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
-from dotenv import load_dotenv
-from supabase import create_client, Client
-
-load_dotenv()
-
-_supabase: Client = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_ANON_KEY"),
-)
+from ..supabase_client import get_client
 
 
 def _parse_date(value):
@@ -74,7 +65,8 @@ def insert_articles(articles):
 
     try:
         response = (
-            _supabase.table("articles")
+            get_client()
+            .table("articles")
             .upsert(rows, on_conflict="url", ignore_duplicates=True)
             .execute()
         )

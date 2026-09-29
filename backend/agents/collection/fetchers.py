@@ -13,15 +13,30 @@ Each function returns a list of dicts with a consistent shape:
 """
 
 import os
+import time
+
 import feedparser
 import requests
-import time
-from dotenv import load_dotenv
 
-load_dotenv()
+from ..supabase_client import ENV_PATH
 
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
-GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
+
+def _api_key(name):
+    """
+    Read an API key when it is needed, not when the module is imported.
+
+    These were module-level constants read after a bare load_dotenv(),
+    which only finds .env when the process happens to start in the right
+    directory. Imported by the pipeline rather than run as a script, that
+    left both keys permanently None.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        pass
+    else:
+        load_dotenv(ENV_PATH)
+    return os.environ.get(name)
 
 SEARCH_QUERIES = [
     "generative AI education",
@@ -41,7 +56,8 @@ RSS_FEEDS = [
 ]
 
 def fetch_from_newsapi(page_size=100):
-    if not NEWS_API_KEY:
+    news_api_key = _api_key("NEWS_API_KEY")
+    if not news_api_key:
         print("NEWS_API_KEY not set in .env")
         return []
 
@@ -49,13 +65,13 @@ def fetch_from_newsapi(page_size=100):
     articles = []
 
     for query in SEARCH_QUERIES:
-	time.sleep(1)
+        time.sleep(1)
         params = {
             "q": query,
             "language": "en",
             "sortBy": "publishedAt",
             "pageSize": page_size,
-            "apiKey": NEWS_API_KEY,
+            "apiKey": news_api_key,
         }
         try:
             response = requests.get(url, params=params, timeout=15)
@@ -78,7 +94,8 @@ def fetch_from_newsapi(page_size=100):
     return articles
 
 def fetch_from_gnews(max_articles=10):
-    if not GNEWS_API_KEY:
+    gnews_api_key = _api_key("GNEWS_API_KEY")
+    if not gnews_api_key:
         print("GNEWS_API_KEY not set in .env")
         return []
 
@@ -91,7 +108,7 @@ def fetch_from_gnews(max_articles=10):
             "q": query,
             "lang": "en",
             "max": max_articles,
-            "apikey": GNEWS_API_KEY,
+            "apikey": gnews_api_key,
         }
         try:
             response = requests.get(url, params=params, timeout=15)

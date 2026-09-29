@@ -7,7 +7,7 @@ import re
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 
-from db import _supabase
+from ..supabase_client import get_client
 
 # Stakeholder keyword sets. Each article scores against all; highest wins.
 STAKEHOLDER_TERMS = {
@@ -69,7 +69,7 @@ def classify_stakeholder(title, content):
 
 def run(limit=None):
     query = (
-        _supabase.table("articles")
+        get_client().table("articles")
         .select("id, title, clean_content, url")
         .eq("is_relevant", True)
         .eq("processing_status", "success")
@@ -96,7 +96,7 @@ def run(limit=None):
     # Insert in batches
     for i in range(0, len(results), 200):
         batch = results[i:i+200]
-        _supabase.table("classification_results").upsert(
+        get_client().table("classification_results").upsert(
             batch, on_conflict="article_id,classifier"
         ).execute()
 

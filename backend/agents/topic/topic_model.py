@@ -15,13 +15,13 @@ from sklearn.feature_extraction.text import CountVectorizer, ENGLISH_STOP_WORDS
 from umap import UMAP
 
 def get_database():
-    env_path = Path(__file__).resolve().parents[1] / "backend" / ".env"
-    load_dotenv(env_path)
+    # The shared client resolves backend/.env and the SUPABASE_KEY /
+    # SUPABASE_ANON_KEY naming in one place. The hand-rolled path here
+    # pointed at <repo>/backend/.env from the old top-level folder and
+    # broke when this module moved under backend/agents/.
+    from ..supabase_client import get_client
 
-    return create_client(
-        os.environ["SUPABASE_URL"],
-        os.environ["SUPABASE_KEY"],
-    )
+    return get_client()
 
 def save_topic_results(results):
     if results.empty:

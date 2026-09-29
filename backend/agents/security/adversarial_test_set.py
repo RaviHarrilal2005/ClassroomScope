@@ -26,7 +26,10 @@ Run:  pip install bleach && python3 adversarial_test_set.py
 import base64
 import sys
 
-from text_filter import sanitize_comment
+try:
+    from .text_filter import sanitize_comment
+except ImportError:  # running the file directly, not importing the package
+    from text_filter import sanitize_comment
 
 CASES = []
 

@@ -31,7 +31,7 @@ from collections import Counter
 import psycopg2
 from dotenv import load_dotenv
 
-from text_filter import sanitize_comment as sanitize_text
+from .text_filter import sanitize_comment as sanitize_text
 
 load_dotenv()
 

@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 import requests
 from dotenv import load_dotenv
 
-from db import _supabase
+from ..supabase_client import get_client
 
 load_dotenv()
 
@@ -123,7 +123,7 @@ def run(limit=None):
 
     # Only articles not yet classified by Luna.
     existing = (
-        _supabase.table("classification_results")
+        get_client().table("classification_results")
         .select("article_id")
         .eq("classifier", CLASSIFIER_TAG)
         .execute()
@@ -131,7 +131,7 @@ def run(limit=None):
     done_ids = {r["article_id"] for r in existing}
 
     query = (
-        _supabase.table("articles")
+        get_client().table("articles")
         .select("id, title, clean_content, url")
         .eq("is_relevant", True)
         .eq("processing_status", "success")
@@ -166,7 +166,7 @@ def run(limit=None):
         }
 
         try:
-            _supabase.table("classification_results").upsert(
+            get_client().table("classification_results").upsert(
                 record, on_conflict="article_id,classifier"
             ).execute()
             success += 1

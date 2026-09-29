@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import requests
 from bs4 import BeautifulSoup
 
-from db import _supabase
+from ..supabase_client import get_client
 
 HEADERS = {
     "User-Agent": (
@@ -77,7 +77,7 @@ def fetch_and_extract(url):
 
 def run(limit=None):
     query = (
-        _supabase.table("articles")
+        get_client().table("articles")
         .select("id, url")
         .eq("is_relevant", True)
         .eq("processing_status", "pending")
@@ -98,7 +98,7 @@ def run(limit=None):
             "processing_note": note,
             "processed_at": datetime.now(timezone.utc).isoformat(),
         }
-        _supabase.table("articles").update(update).eq("id", row["id"]).execute()
+        get_client().table("articles").update(update).eq("id", row["id"]).execute()
 
         marker = "+" if status == "success" else "-"
         print(f"  [{marker}] {status:<10} {row['url'][:80]}")

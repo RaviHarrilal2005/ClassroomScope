@@ -5,7 +5,7 @@ Usage:
     python filter_relevance.py
 """
 
-from db import _supabase
+from ..supabase_client import get_client
 
 # Must hit at least one from each list to qualify.
 GAI_TERMS = [
@@ -31,7 +31,7 @@ def is_relevant(title, content):
 def run():
     # Fetch only rows we haven't classified yet.
     response = (
-        _supabase.table("articles")
+        get_client().table("articles")
         .select("id, title, content")
         .is_("is_relevant", "null")
         .execute()
@@ -42,7 +42,7 @@ def run():
     relevant_count = 0
     for row in rows:
         flag = is_relevant(row.get("title"), row.get("content"))
-        _supabase.table("articles").update(
+        get_client().table("articles").update(
             {"is_relevant": flag}
         ).eq("id", row["id"]).execute()
         relevant_count += int(flag)
