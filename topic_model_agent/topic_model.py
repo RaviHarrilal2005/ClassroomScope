@@ -14,6 +14,23 @@ from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer, ENGLISH_STOP_WORDS
 from umap import UMAP
 
+REVIEWED_LABELS = {
+    "0_city_framework_trends_taskforce":
+        "AI adoption and policies in schools",
+
+    "1_cheating_harvard_law_chatgpt":
+        "Academic integrity and assessment",
+
+    "2_covid_al_sources_awareness":
+        "General education and school operations",
+
+    "3_financial_enrollment_barrow_dei":
+        "Education access, finances, and governance",
+
+    "4_reply_06_09_cheating":
+        "Critical thinking and AI dependence",
+}
+
 def get_database():
     env_path = Path(__file__).resolve().parents[1] / "backend" / ".env"
     load_dotenv(env_path)
@@ -31,16 +48,23 @@ def save_topic_results(results):
     records = results.to_dict(orient="records")
     database.table("topic_results").upsert(records, on_conflict="article_id").execute()
 
-def load_articles():
+def load_articles(article_ids=None):
     database = get_database()
-    response = (
+
+    query = (
         database.table("articles")
         .select("id, content_hash, clean_content, is_relevant, processing_status")
         .eq("is_relevant", True)
         .eq("processing_status", "success")
         .order("id")
-        .execute()
     )
+
+    if article_ids is not None:
+        if not article_ids:
+            return pd.DataFrame()
+        query = query.in_("id", article_ids)
+
+    response = query.execute()
     return pd.DataFrame(response.data)
 
 
@@ -105,14 +129,88 @@ def analyze_topics(articles, topic_count=None):
     articles["topic_id"] = topics
     articles["topic_label"] = articles["topic_id"].map(topic_info["Name"])
 
+    articles["topic_label"] = articles["topic_label"].replace(REVIEWED_LABELS)
+
     topic_results = build_topic_results(articles)
 
     return topic_results
 
-if __name__ == "__main__":
-    articles = load_articles()
-    print(f"Loaded {len(articles)} articles from Supabase.")
+def run_topic_agent(articles, topic_count=None):
+    try:
+        results = analyze_topics(articles, topic_count)
 
-    results = analyze_topics(articles, topic_count=6)
-    save_topic_results(results)
-    print(f"Saved {len(results)} topic results to Supabase.")
+        return {
+            "agent": "topic",
+            "status": "success" if not results.empty else "skipped",
+            "results": results,
+            "error": None,
+        }
+
+    except Exception as exc:
+        return {
+            "agent": "topic",
+            "status": "failed",
+            "results": pd.DataFrame(columns=["article_id", "topic"]),
+            "error": {
+                "type": type(exc).__name__,
+                "message": str(exc),
+            },
+        }
+
+class TopicAgent:
+    name = "topic"
+
+    def run(self, ctx):
+        articles = load_articles(ctx.approved_ids)
+
+        if articles.empty:
+            return {
+                "processed": 0,
+                "article_ids": [],
+            }
+
+        results = analyze_topics(articles, topic_count=6)
+        save_topic_results(results)
+
+        return {
+            "processed": len(results),
+            "article_ids": results["article_id"].tolist(),
+        }
+
+if __name__ == "__main__":
+    try:
+        articles = load_articles()
+        print(f"Loaded {len(articles)} articles from Supabase.")
+    except Exception as exc:
+        print(
+            f"Database load failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        raise SystemExit(2)
+
+    outcome = run_topic_agent(articles, topic_count=6)
+
+    if outcome["status"] == "failed":
+        error = outcome["error"]
+        print(
+            f"Topic analysis failed: "
+            f"{error['type']}: {error['message']}"
+        )
+        raise SystemExit(1)
+
+    if outcome["status"] == "skipped":
+        print("Topic analysis skipped: no eligible articles.")
+        raise SystemExit(0)
+
+    try:
+        save_topic_results(outcome["results"])
+        print(
+            f"Saved {len(outcome['results'])} "
+            "topic results to Supabase."
+        )
+    except Exception as exc:
+        print(
+            f"Database save failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        raise SystemExit(3)
