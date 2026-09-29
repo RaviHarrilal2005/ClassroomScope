@@ -4,16 +4,50 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
+from pathlib import Path
+from dotenv import load_dotenv
+from supabase import create_client
+
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer, ENGLISH_STOP_WORDS
 from umap import UMAP
 
-def analyze_topics():
+def get_database():
+    env_path = Path(__file__).resolve().parents[1] / "backend" / ".env"
+    load_dotenv(env_path)
+
+    return create_client(
+        os.environ["SUPABASE_URL"],
+        os.environ["SUPABASE_KEY"],
+    )
+
+def save_topic_results(results):
+    if results.empty:
+        return
+
+    database = get_database()
+    records = results.to_dict(orient="records")
+    database.table("topic_results").upsert(records, on_conflict="article_id").execute()
+
+def load_articles():
+    database = get_database()
+    response = (
+        database.table("articles")
+        .select("id, content_hash, clean_content, is_relevant, processing_status")
+        .eq("is_relevant", True)
+        .eq("processing_status", "success")
+        .order("id")
+        .execute()
+    )
+    return pd.DataFrame(response.data)
+
+
+def analyze_topics(articles):
 
     #Loads CSV file of articles
-    articles = pd.read_csv("articles_rows.csv").drop_duplicates(subset="content_hash").reset_index(drop=True)
+    articles = articles.drop_duplicates(subset="content_hash").reset_index(drop=True)
     articles = articles[(articles["is_relevant"] == True) & (articles["processing_status"] == "success") & articles["clean_content"].fillna("").str.strip().ne("")].copy()
     articles = articles.reset_index(drop = True)
 
@@ -40,10 +74,12 @@ def analyze_topics():
         return topic_model, embedding_model
 
     def build_topic_results(articles):
-        # Keep the original article ID so the aggregator can match other agents' results.
-        return articles[["id", "topic_id", "topic_label"]].rename(
-            columns={"id": "article_id"}
-        ).copy()
+        return articles[["id", "topic_label"]].rename(
+        columns={
+            "id": "article_id",
+            "topic_label": "topic",
+        }
+    ).copy()
 
     topic_model, embedding_model = build_topic_model()
 
@@ -65,4 +101,9 @@ def analyze_topics():
     return topic_results
 
 if __name__ == "__main__":
-    results = analyze_topics()
+    articles = load_articles()
+    print(f"Loaded {len(articles)} articles from Supabase.")
+
+    results = analyze_topics(articles)
+    save_topic_results(results)
+    print(f"Saved {len(results)} topic results to Supabase.")
