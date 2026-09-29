@@ -44,7 +44,7 @@ def load_articles():
     return pd.DataFrame(response.data)
 
 
-def analyze_topics(articles):
+def analyze_topics(articles, topic_count=None):
 
     if articles.empty:
         print("No eligible articles to analyze.")
@@ -78,7 +78,7 @@ def analyze_topics(articles):
 
         embedding_model = SentenceTransformer("all-mpnet-base-v2")
 
-        topic_model = BERTopic(embedding_model=embedding_model, vectorizer_model=vectorizer_model, umap_model=umap_model, min_topic_size=min_topic_size, nr_topics=None)
+        topic_model = BERTopic(embedding_model=embedding_model, vectorizer_model=vectorizer_model, umap_model=umap_model, min_topic_size=min_topic_size, nr_topics=topic_count)
 
         return topic_model, embedding_model
 
@@ -113,6 +113,6 @@ if __name__ == "__main__":
     articles = load_articles()
     print(f"Loaded {len(articles)} articles from Supabase.")
 
-    results = analyze_topics(articles)
+    results = analyze_topics(articles, topic_count=6)
     save_topic_results(results)
     print(f"Saved {len(results)} topic results to Supabase.")
