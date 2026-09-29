@@ -149,3 +149,35 @@ def fetch_from_rss(feeds=RSS_FEEDS):
                 "content": entry.get("summary", ""),
             })
     return articles
+
+# Source name -> fetcher. fetch_all() walks this, so adding a source is
+# one entry here rather than a change to every caller.
+SOURCES = {
+    "newsapi": fetch_from_newsapi,
+    "gnews": fetch_from_gnews,
+    "rss": fetch_from_rss,
+}
+
+
+def fetch_all(sources=None):
+    """
+    Every configured source, in one list. No database writes.
+
+    A source that raises is logged and skipped: one dead feed or an
+    expired API key should cost us that source's articles, not the whole
+    collection stage. Callers get partial results, as documented in
+    README section 4.1.
+    """
+    articles = []
+    for name in (sources or SOURCES):
+        fetcher = SOURCES.get(name)
+        if fetcher is None:
+            raise ValueError(f"Unknown source '{name}'. Known: {', '.join(SOURCES)}")
+        try:
+            found = fetcher()
+        except Exception as e:
+            print(f"Source '{name}' failed: {type(e).__name__}: {e}")
+            continue
+        print(f"Source '{name}': {len(found)} article(s)")
+        articles.extend(found)
+    return articles

@@ -28,7 +28,10 @@ def make_coordinator(sleeps):
     """
 
     def factory(agents=None, fallbacks=None, policies=None, store=None):
-        registry = build_default_registry()
+        # live=False pins the stubs: the suite must behave the same on a
+        # machine with Supabase credentials in backend/.env as on one
+        # without, and must never touch the network.
+        registry = build_default_registry(live=False)
         agents, fallbacks = agents or {}, fallbacks or {}
         for stage in set(agents) | set(fallbacks):
             primary = agents.get(stage, registry.get(stage))

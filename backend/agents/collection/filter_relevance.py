@@ -28,14 +28,25 @@ def is_relevant(title, content):
     return has_gai and has_edu
 
 
-def run():
-    # Fetch only rows we haven't classified yet.
-    response = (
+def run(article_ids=None):
+    """
+    Set is_relevant on rows that do not have it yet.
+
+    article_ids narrows the work to one run's articles; without it the
+    whole unclassified backlog is checked.
+    """
+    if article_ids is not None and not article_ids:
+        print("Checking 0 unclassified articles...")
+        return {"checked": 0, "relevant": 0, "irrelevant": 0}
+
+    query = (
         get_client().table("articles")
         .select("id, title, content")
         .is_("is_relevant", "null")
-        .execute()
     )
+    if article_ids is not None:
+        query = query.in_("id", list(article_ids))
+    response = query.execute()
     rows = response.data or []
     print(f"Checking {len(rows)} unclassified articles...")
 
@@ -49,6 +60,8 @@ def run():
 
     print(f"Marked {relevant_count} as relevant, "
           f"{len(rows) - relevant_count} as irrelevant.")
+    return {"checked": len(rows), "relevant": relevant_count,
+            "irrelevant": len(rows) - relevant_count}
 
 
 if __name__ == "__main__":

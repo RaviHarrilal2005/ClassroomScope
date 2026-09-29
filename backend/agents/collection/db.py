@@ -54,26 +54,44 @@ def _to_row(article):
     }
 
 
-def insert_articles(articles):
+def insert_articles_returning_ids(articles):
     """Insert articles, skipping any whose url already exists.
-    Returns (inserted_count, skipped_count).
+    Returns (inserted_ids, skipped_count).
+
+    The ids matter to the pipeline: the coordinator's contract asks the
+    collection stage for the IDs it stored this run, and hands them to
+    the stages that follow. `ignore_duplicates=True` means the response
+    carries only the rows that were actually new, which is exactly that
+    set.
     """
     # Drop anything without a url — we can't dedupe or store it.
     rows = [_to_row(a) for a in articles if a.get("url")]
     if not rows:
-        return 0, 0
+        return [], 0
 
+    response = (
+        get_client()
+        .table("articles")
+        .upsert(rows, on_conflict="url", ignore_duplicates=True)
+        .execute()
+    )
+
+    inserted = [r["id"] for r in (response.data or []) if r.get("id") is not None]
+    skipped = len(rows) - len(response.data or [])
+    return inserted, skipped
+
+
+def insert_articles(articles):
+    """Insert articles, skipping any whose url already exists.
+    Returns (inserted_count, skipped_count) — the signature in README 4.2.
+    """
     try:
-        response = (
-            get_client()
-            .table("articles")
-            .upsert(rows, on_conflict="url", ignore_duplicates=True)
-            .execute()
-        )
+        inserted, skipped = insert_articles_returning_ids(articles)
     except Exception as e:
+        # Kept for the standalone scripts, which print and carry on.
+        # insert_articles_returning_ids raises instead, because the
+        # coordinator needs a failed stage to look like a failure
+        # rather than like a run that collected nothing.
         print(f"Insert error: {e}")
         return 0, 0
-
-    inserted = len(response.data) if response.data else 0
-    skipped = len(rows) - inserted
-    return inserted, skipped
+    return len(inserted), skipped

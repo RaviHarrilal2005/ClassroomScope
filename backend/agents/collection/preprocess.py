@@ -75,13 +75,28 @@ def fetch_and_extract(url):
     return body, "success", None
 
 
-def run(limit=None):
+def run(limit=None, article_ids=None):
+    """
+    Download and extract body text for relevant, unprocessed rows.
+
+    article_ids narrows the work to one run's articles. Without it every
+    pending row is processed, which is right for a manual catch-up but
+    wrong inside a pipeline run: a run that collected three articles
+    would sit downloading the whole backlog a second at a time, and the
+    result would be recorded against that run.
+    """
+    if article_ids is not None and not article_ids:
+        print("Processing 0 articles...")
+        return {"processed": 0, "success": 0, "failed": 0}
+
     query = (
         get_client().table("articles")
         .select("id, url")
         .eq("is_relevant", True)
         .eq("processing_status", "pending")
     )
+    if article_ids is not None:
+        query = query.in_("id", list(article_ids))
     if limit:
         query = query.limit(limit)
 
@@ -110,6 +125,7 @@ def run(limit=None):
         time.sleep(1)  # be polite to servers
 
     print(f"\nDone. Success: {success}, Failed: {failed}.")
+    return {"processed": len(rows), "success": success, "failed": failed}
 
 
 if __name__ == "__main__":
