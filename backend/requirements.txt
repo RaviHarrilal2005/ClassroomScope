@@ -7,3 +7,10 @@ supabase>=2.0
 
 # Loads backend/.env so SUPABASE_URL / SUPABASE_KEY reach os.environ.
 python-dotenv>=1.0
+
+# Topic analysis agent
+pandas>=2.0
+sentence-transformers>=3.0
+bertopic>=0.16
+umap-learn>=0.5
+scikit-learn>=1.3

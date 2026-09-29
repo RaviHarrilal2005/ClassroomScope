@@ -12,7 +12,7 @@ from typing import Dict, Iterable, List, Optional
 
 from . import agents
 from .agents import Agent
-from .stages import AGGREGATION, ANALYSIS_STAGES, COLLECTION, SECURITY, SENTIMENT
+from .stages import AGGREGATION, ANALYSIS_STAGES, COLLECTION, SECURITY, SENTIMENT, TOPIC
 
 
 class AgentRegistry:
@@ -53,6 +53,12 @@ def build_default_registry() -> AgentRegistry:
     registry.register(SECURITY, agents.stub_security())        # TODO: real screening agent
     for stage in ANALYSIS_STAGES:                              # TODO: real analysis agents
         fallback = agents.stub_fallback(stage) if stage == SENTIMENT else None
-        registry.register(stage, agents.stub_analysis(stage), fallback=fallback)
+        if stage == TOPIC:
+            # The topic agent reads approved article IDs from RunContext and
+            # writes topic_results itself, following the agent contract.
+            from topic_model_agent.topic_model import TopicAgent
+            registry.register(stage, TopicAgent())
+        else:
+            registry.register(stage, agents.stub_analysis(stage), fallback=fallback)
     registry.register(AGGREGATION, agents.stub_aggregation())  # TODO: real results aggregator
     return registry
