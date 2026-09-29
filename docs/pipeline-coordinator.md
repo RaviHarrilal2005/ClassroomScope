@@ -1,7 +1,7 @@
 # Pipeline Coordinator (SS-4)
 
 **Status: running end to end with three real agents.** The sequencing
-and failure handling are built and tested (73 tests). Collection,
+and failure handling are built and tested (89 tests). Collection,
 security and classification are the team's real agents; sentiment,
 topic, stance and aggregation are still stubs — see
 [Which agents are real](#which-agents-are-real). Run status goes to the
@@ -67,7 +67,7 @@ backend/
     security/               sanitization filter + its adversarial suite
     classification/         stakeholder and source-type classifiers
     topic/                  BERTopic model — standalone, stage still stubbed
-  tests/                    73 tests (more get added as features land)
+  tests/                    89 tests (more get added as features land)
   .env                      credentials — gitignored, never commit
 docs/
   pipeline_tables.sql       the originally proposed SQL; see the note in its header
@@ -223,7 +223,7 @@ Starting a run while another is active returns `409` with the active run's ID.
 
 ## Testing plan
 
-73 tests, none of which touch the network: stage order, the four
+89 tests, none of which touch the network: stage order, the four
 analysis agents running at the same time, each failure rule, the API,
 the Supabase store against a fake client, and the adapters against fake
 agent modules. The suite passes `live=False`, so it behaves the same

@@ -36,7 +36,7 @@ itself rather than an upcoming feature:
   test_registry_wiring.py  which agent each stage gets, and how the
                            environment decides
 
-backend/tests/ now holds 73 tests. None of them touch the network.
+backend/tests/ now holds 89 tests. None of them touch the network.
 
 
 NOTES
