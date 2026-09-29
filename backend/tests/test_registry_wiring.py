@@ -8,6 +8,7 @@ machine that happens to have a .env.
 """
 import pytest
 
+from agents.adapters import ClassificationAgent, CollectionAgent
 from orchestrator.agents import StubAgent
 from orchestrator.registry import _luna_configured, build_default_registry
 from orchestrator.stages import (
@@ -56,6 +57,7 @@ def test_sentiment_keeps_its_fallback():
 
 def test_collection_options_reach_the_collection_agent():
     agent = build_default_registry(live=True, backlog=True, backlog_limit=7).get(COLLECTION)
+    assert isinstance(agent, CollectionAgent)
     assert agent.backlog is True and agent.backlog_limit == 7
 
 
@@ -71,9 +73,10 @@ def test_the_llm_classifier_leads_when_it_has_credentials(monkeypatch):
     monkeypatch.setenv("TRUSSED_API_KEY", "sk-a-real-looking-key")
     monkeypatch.setenv("TRUSSED_BASE_URL", "https://trussed.example/chat/completions")
     registry = build_default_registry(live=True)
+    primary, fallback = registry.get(CLASSIFICATION), registry.get_fallback(CLASSIFICATION)
 
-    assert registry.get(CLASSIFICATION).classifier == "luna"
-    assert registry.get_fallback(CLASSIFICATION).classifier == "baseline"
+    assert isinstance(primary, ClassificationAgent) and primary.classifier == "luna"
+    assert isinstance(fallback, ClassificationAgent) and fallback.classifier == "baseline"
 
 
 @pytest.mark.parametrize("key", ["your-trussed-api-key", "YOUR_KEY_HERE", "<your key>", "changeme", "", "   "])
@@ -88,7 +91,8 @@ def test_a_placeholder_key_does_not_count_as_configured(monkeypatch, key):
 
     assert _luna_configured() is False
     registry = build_default_registry(live=True)
-    assert registry.get(CLASSIFICATION).classifier == "baseline"
+    primary = registry.get(CLASSIFICATION)
+    assert isinstance(primary, ClassificationAgent) and primary.classifier == "baseline"
     assert registry.get_fallback(CLASSIFICATION) is None
 
 

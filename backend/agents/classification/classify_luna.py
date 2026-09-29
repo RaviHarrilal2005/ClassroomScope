@@ -91,6 +91,9 @@ def call_luna(prompt):
         "reasoning_effort": "none",
     }
 
+    if not BASE_URL:
+        return None, None, "TRUSSED_BASE_URL is not set"
+
     try:
         r = requests.post(
             BASE_URL, headers=headers, json=body, timeout=60,

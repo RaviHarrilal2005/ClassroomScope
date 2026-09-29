@@ -19,8 +19,9 @@ from orchestrator.supabase_store import SupabaseRunStore, parse_ts
 
 class FakeQuery:
     def __init__(self, tables, name):
-        self.rows = tables.setdefault(name, [])
-        self.op, self.payload, self.filters = None, None, []
+        self.rows: list[dict] = tables.setdefault(name, [])
+        self.op, self.filters = None, []
+        self.payload: dict = {}
         self.sort, self.max_rows = None, None
 
     def insert(self, row):
@@ -119,6 +120,7 @@ def test_unknown_columns_are_rejected():
 ])
 def test_timestamps_from_supabase_parse_on_older_python(text, microsecond):
     parsed = parse_ts(text)
+    assert parsed is not None
     assert parsed.microsecond == microsecond
     assert parsed.utcoffset() == timezone.utc.utcoffset(None)
 

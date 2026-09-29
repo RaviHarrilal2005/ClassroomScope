@@ -59,7 +59,7 @@ def classify_stakeholder(title, content):
     if total == 0:
         return "undetermined", 0.0
 
-    winner = max(scores, key=scores.get)
+    winner = max(scores, key=lambda group: scores[group])
     confidence = scores[winner] / total
 
     if confidence < CONFIDENCE_THRESHOLD:
