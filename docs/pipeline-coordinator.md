@@ -1,13 +1,17 @@
 # Pipeline Coordinator (SS-4)
 
-**Status: running end to end with three real agents.** The sequencing
-and failure handling are built and tested (89 tests). Collection,
-security and classification are the team's real agents; sentiment,
-topic, stance and aggregation are still stubs — see
-[Which agents are real](#which-agents-are-real). Run status goes to the
-Supabase `pipeline_runs` / `pipeline_stage_runs` tables when credentials
-are set, and a full seven-stage run over 40 real articles has been
-recorded end to end. See [Supabase run store](#supabase-run-store).
+**Status: running end to end with three real agents, verified against
+the live database.** The sequencing and failure handling are built and
+tested (89 tests). Collection, security and classification are the
+team's real agents; sentiment, topic, stance and aggregation are still
+stubs — see [Which agents are real](#which-agents-are-real).
+
+Verified with a secret key on 2026-09-29: a run fetched from GNews and
+the RSS feeds, inserted 104 new articles, preprocessed and screened
+them, classified 11 with the LLM classifier, and recorded all seven
+stages to `pipeline_runs` / `pipeline_stage_runs` — run #10, status
+`completed`. `GET /api/v1/runs` and `GET /api/v1/runs/<id>` read it
+back. See [Supabase run store](#supabase-run-store).
 
 ## What it does
 
@@ -322,20 +326,23 @@ the corpus the analysis agents read.
 
 ### Which key unlocks what
 
-Measured against the live project with a publishable key:
+Both measured against the live project:
 
 | | publishable key | secret key |
 |---|---|---|
 | Read `articles` | yes | yes |
 | **Insert `articles`** (collection) | **no — 42501** | yes |
+| Read `pipeline_stage_runs` | **no — 42501** | yes |
 | Write `classification_results` | yes | yes |
 | Write `pipeline_runs` / `pipeline_stage_runs` | **no — 42501** | yes |
 
-So with a publishable key the pipeline runs, but only in `--backlog`
-mode, and nothing about the run is recorded: `build_run_store()` falls
-back to `InMemoryRunStore` and the history is lost when the process
-stops. Collection fails all three attempts and the run ends `failed`
-with the Postgres hint in `error_detail`.
+With a publishable key the pipeline runs, but only in `--backlog` mode,
+and nothing about the run is recorded: `build_run_store()` falls back
+to `InMemoryRunStore` and the history is lost when the process stops.
+Collection fails all three attempts and the run ends `failed` with the
+Postgres hint in `error_detail`. That is a confusing state to debug,
+because most of a backlog run looks healthy — so `build_run_store()`
+says at startup when the anon key is the only one set.
 
 ### Two things that look like bugs and are not
 
