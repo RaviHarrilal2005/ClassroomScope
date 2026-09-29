@@ -125,8 +125,8 @@ def _luna_configured() -> bool:
     the primary agent, so every run burns its retries on a 401 before
     falling back to the keyword scorer. A placeholder means unset.
     """
-    key = (os.environ.get("TRUSSED_API_KEY") or "").strip()
-    url = (os.environ.get("TRUSSED_BASE_URL") or "").strip()
-    if not key or not url:
-        return False
-    return not any(key.lower().startswith(p) for p in ("your-", "your_", "<", "changeme"))
+    from agents.config import is_placeholder
+
+    return not is_placeholder(os.environ.get("TRUSSED_API_KEY")) and bool(
+        (os.environ.get("TRUSSED_BASE_URL") or "").strip()
+    )

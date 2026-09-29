@@ -31,14 +31,11 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from pathlib import Path
 from typing import Any, Optional
 
-logger = logging.getLogger(__name__)
+from .config import ENV_PATH, load_env
 
-# backend/.env, whatever the working directory. Real environment
-# variables win, so deployments can set them without a file.
-ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+logger = logging.getLogger(__name__)
 
 KEY_VARS = ("SUPABASE_KEY", "SUPABASE_ANON_KEY")
 
@@ -46,17 +43,9 @@ _client: Optional[Any] = None
 _lock = threading.Lock()
 
 
-def _load_env() -> None:
-    try:
-        from dotenv import load_dotenv
-    except ImportError:  # python-dotenv is optional; real env vars still work
-        return
-    load_dotenv(ENV_PATH)
-
-
 def credentials() -> tuple[Optional[str], Optional[str], Optional[str]]:
     """(url, key, which_variable_the_key_came_from) — without building a client."""
-    _load_env()
+    load_env()
     url = os.environ.get("SUPABASE_URL")
     for name in KEY_VARS:
         key = os.environ.get(name)

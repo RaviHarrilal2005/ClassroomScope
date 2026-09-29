@@ -12,13 +12,12 @@ Each function returns a list of dicts with a consistent shape:
     }
 """
 
-import os
 import time
 
 import feedparser
 import requests
 
-from ..supabase_client import ENV_PATH
+from ..config import optional_key
 
 
 def _api_key(name):
@@ -29,14 +28,12 @@ def _api_key(name):
     which only finds .env when the process happens to start in the right
     directory. Imported by the pipeline rather than run as a script, that
     left both keys permanently None.
+
+    optional_key also treats an unfilled placeholder as missing, so a
+    copied .env.example skips the source instead of making five requests
+    that all come back 401.
     """
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-        pass
-    else:
-        load_dotenv(ENV_PATH)
-    return os.environ.get(name)
+    return optional_key(name)
 
 SEARCH_QUERIES = [
     "generative AI education",

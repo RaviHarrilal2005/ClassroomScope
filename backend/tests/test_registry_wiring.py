@@ -100,3 +100,57 @@ def test_a_missing_base_url_also_means_not_configured(monkeypatch):
     monkeypatch.setenv("TRUSSED_API_KEY", "sk-a-real-looking-key")
     monkeypatch.delenv("TRUSSED_BASE_URL", raising=False)
     assert _luna_configured() is False
+
+
+# --- placeholder credentials ------------------------------------------
+@pytest.mark.parametrize("value", [
+    None, "", "   ",
+    "your-newsapi-key", "YOUR_KEY_HERE", "<paste key here>",
+    "changeme", "replace-me", "xxxxx",
+])
+def test_unfilled_example_values_read_as_missing(value):
+    from agents.config import is_placeholder
+
+    assert is_placeholder(value) is True
+
+
+@pytest.mark.parametrize("value", [
+    "sb_secret_abc123", "sk-proj-abc", "d41d8cd98f00b204",
+    # A real key is not discarded just because it contains one of the words.
+    "abc-your-key-suffix", "keyxxx",
+])
+def test_real_looking_values_are_kept(value):
+    from agents.config import is_placeholder
+
+    assert is_placeholder(value) is False
+
+
+def test_a_placeholder_news_key_skips_the_source_without_calling_it(monkeypatch, capsys):
+    """
+    Five 401s a second apart is what a copied .env used to buy. The
+    fetcher should skip the source the same way it does with no key.
+    """
+    from agents.collection import fetchers
+
+    monkeypatch.setenv("NEWS_API_KEY", "your-newsapi-key-here")
+
+    def fail(*args, **kwargs):
+        raise AssertionError("no request should be made with a placeholder key")
+
+    monkeypatch.setattr(fetchers.requests, "get", fail)
+    assert fetchers.fetch_from_newsapi() == []
+    assert "NEWS_API_KEY not set" in capsys.readouterr().out
+
+
+def test_a_dead_source_does_not_take_the_others_down(monkeypatch):
+    """fetch_all returns partial results, as collection/README.md 4.1 says."""
+    from agents.collection import fetchers
+
+    def boom():
+        raise ConnectionError("feed unreachable")
+
+    monkeypatch.setitem(fetchers.SOURCES, "newsapi", boom)
+    monkeypatch.setitem(fetchers.SOURCES, "gnews", lambda: [{"url": "https://x/1"}])
+    monkeypatch.setitem(fetchers.SOURCES, "rss", lambda: [{"url": "https://x/2"}])
+
+    assert len(fetchers.fetch_all()) == 2
