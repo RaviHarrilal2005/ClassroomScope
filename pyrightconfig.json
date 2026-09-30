@@ -1,0 +1,28 @@
+{
+  // Run with `python -m pyright backend/` from the repo root.
+  // See backend/requirements-dev.txt.
+
+  // backend/ is on sys.path at runtime (conftest.py adds it, and the app
+  // starts from there), so `orchestrator` and `agents` are top-level.
+  "extraPaths": ["backend"],
+
+  "exclude": [
+    "**/.*",
+    "**/__pycache__",
+    "**/node_modules",
+    ".venv",
+
+    // agents/topic is the BERTopic model. It is a standalone script: the
+    // topic stage is still a stub, so bertopic, sentence-transformers and
+    // umap-learn are deliberately not installed (~2GB). Without them every
+    // line touching those libraries is an unresolved import, and checking
+    // the file would mean installing the stack to type-check code nothing
+    // runs. Drop this entry when the topic stage is wired in.
+    "backend/agents/topic"
+  ],
+
+  // psycopg2 is optional: only agents/security/filter_validation.py needs
+  // it, and that is a reporting script, not part of a run. A missing stub
+  // for an optional dependency is worth a warning, not an error.
+  "reportMissingModuleSource": "warning"
+}

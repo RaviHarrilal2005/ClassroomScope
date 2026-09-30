@@ -2,6 +2,9 @@
 node_modules/
 frontend/dist/
 npm-debug.log*
+# Stray lockfile from running npm at the repo root; the real one is
+# frontend/package-lock.json.
+/package-lock.json
 
 # Python
 __pycache__/

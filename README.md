@@ -44,14 +44,21 @@ and records each stage's status. It retries collection, skips analysis
 if security screening fails, uses a fallback when sentiment fails, and
 keeps the results of stages that succeeded when another fails.
 
-- Agents are **stubs** for now; owners plug in real agents in
-  `backend/orchestrator/registry.py`
+- **Three of the seven agents are real**: collection (news APIs + RSS,
+  dedupe, relevance filter, body extraction), security (content
+  sanitization screening) and classification (stakeholder and source
+  type). Sentiment, stance and aggregation have no implementation yet;
+  the topic model works but needs ~2GB of ML libraries, so its stage is
+  still stubbed. Each owner's code lives in `backend/agents/<stage>/`.
+- The registry picks real agents when Supabase is configured and stubs
+  otherwise, so the app and the tests still work without credentials.
 - Run status is written to **Supabase** (`pipeline_runs` /
   `pipeline_stage_runs`) when `SUPABASE_URL` and `SUPABASE_KEY` are set,
   and kept in memory otherwise, so the app still starts without
   credentials. Every store method is verified against the real database.
-- Verified end to end against the real database: a full run records all
-  seven stages, finishing `completed`. Note `POST /api/v1/runs` returns
+- Verified end to end against the real database: a full run over 40 real
+  articles records all seven stages, finishing `completed`. Note
+  `POST /api/v1/runs` returns
   `202` straight away and the pipeline continues on a background thread,
   so polling immediately shows `running` with stages still `pending` —
   that is normal, not a stall.
@@ -70,17 +77,26 @@ cp .env.example .env      # then fill in SUPABASE_KEY
 python app.py             # serves http://localhost:5000
 ```
 
-`backend/.env` holds `SUPABASE_URL` and `SUPABASE_KEY`; it is gitignored
-and must never be committed. Use the **secret** (`sb_secret_…`) key — the
-publishable key has no write access to the run tables. Without a `.env`
-the backend still runs, but keeps run status in memory only.
+`backend/.env` holds the credentials; it is gitignored and must never be
+committed. `SUPABASE_URL` must be the **API endpoint**
+(`https://<ref>.supabase.co`), not the dashboard page, and `SUPABASE_KEY`
+should be the **secret** (`sb_secret_…`) key — the publishable key has no
+write access to the run tables. Without a `.env` the backend still runs,
+but keeps run status in memory only.
+
+The news-API and LLM-classifier keys in `.env.example` are optional: a
+source or classifier with no real key is skipped, and an unfilled
+placeholder counts as no key.
 
 **Pipeline demo and tests** (from `backend`)
 ```
 pip install -r requirements-dev.txt
-python run_pipeline.py              # run the pipeline once, print each stage
-python run_pipeline.py --fail topic # see how a failing agent is handled
-python -m pytest tests              # run the test suite
+python run_pipeline.py                   # run once with stubs, print each stage
+python run_pipeline.py --fail topic      # see how a failing agent is handled
+python run_pipeline.py --live --backlog  # the real agents, over articles already
+                                         # stored (no API quota, no downloads)
+python -m pytest tests                   # run the test suite (89 tests)
+python -m pyright backend/               # type check (from the repo root)
 ```
 
 **Front end** (separate terminal)

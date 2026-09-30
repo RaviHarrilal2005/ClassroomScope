@@ -1,18 +1,19 @@
 /**
  * Dashboard Shell — presentation layer (Section 3 of design doc).
  *
- * STATUS: skeleton only.
- *   - Renders sentiment distribution and article list from the stub endpoint.
- *   - No filter panel, no charts library yet — just proving the three
- *     layers (this component -> ViewStateContext -> apiClient -> Flask)
- *     are actually wired together.
+ * STATUS:
+ *   - AdminConsole is built and backed by real data.
+ *   - The results section below still renders the hardcoded /results
+ *     payload. It is labelled as placeholder rather than left to look
+ *     real: sentiment_results has no rows and no sentiment agent exists,
+ *     so those percentages are invented, not stale.
  *
  * NOT built yet: FilterPanel, VisualizationViews (real charts),
- * ExportControls, AdminConsole. See design doc Section 2 for what
- * each of those needs to do.
+ * ExportControls. See design doc Section 2 for what each needs to do.
  */
 import { useEffect } from "react";
 import { useViewState } from "../state/ViewStateContext";
+import AdminConsole from "./AdminConsole";
 
 export default function DashboardShell() {
   const { results, loading, error, loadResults } = useViewState();
@@ -26,7 +27,7 @@ export default function DashboardShell() {
       <header style={{ background: "#1F4E79", color: "#fff", padding: "14px 20px", borderRadius: "4px" }}>
         <strong>ClassroomScope</strong>
         <span style={{ marginLeft: "16px", fontSize: "13px", opacity: 0.8 }}>
-          (skeleton — guest view only, no filters/admin yet)
+          (in progress — no filters or login yet)
         </span>
       </header>
 
@@ -37,7 +38,12 @@ export default function DashboardShell() {
         {results && (
           <>
             <section>
-              <h3>Sentiment toward GAI in education</h3>
+              <h3 style={{ marginBottom: "4px" }}>Sentiment toward GAI in education</h3>
+              <PlaceholderNote>
+                Placeholder figures. <code>sentiment_results</code> is empty and no sentiment
+                agent exists yet, so these percentages are invented — not computed from the
+                corpus.
+              </PlaceholderNote>
               <ul>
                 <li>Positive: {(results.sentiment_distribution.positive * 100).toFixed(0)}%</li>
                 <li>Neutral: {(results.sentiment_distribution.neutral * 100).toFixed(0)}%</li>
@@ -47,7 +53,11 @@ export default function DashboardShell() {
             </section>
 
             <section style={{ marginTop: "20px" }}>
-              <h3>Articles</h3>
+              <h3 style={{ marginBottom: "4px" }}>Articles</h3>
+              <PlaceholderNote>
+                Two hardcoded rows. The pipeline has 814 real articles, but nothing
+                aggregates them into this endpoint yet.
+              </PlaceholderNote>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead>
                   <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
@@ -68,7 +78,29 @@ export default function DashboardShell() {
             </section>
           </>
         )}
+
+        <AdminConsole />
       </main>
     </div>
+  );
+}
+
+/** Marks a section as showing data the pipeline did not produce. */
+function PlaceholderNote({ children }) {
+  return (
+    <p
+      style={{
+        fontSize: "12px",
+        color: "#8A5A00",
+        background: "#FDF1DC",
+        border: "1px solid #F0D9A8",
+        borderRadius: "3px",
+        padding: "6px 10px",
+        margin: "0 0 10px",
+        maxWidth: "70ch",
+      }}
+    >
+      {children}
+    </p>
   );
 }
