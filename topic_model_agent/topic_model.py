@@ -1,10 +1,5 @@
 #Libraries
 import os
-import hashlib
-import json
-import threading
-from datetime import datetime, timezone
-from tempfile import NamedTemporaryFile
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -12,87 +7,28 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 from pathlib import Path
 from dotenv import load_dotenv
 from supabase import create_client
-from postgrest.exceptions import APIError
 
 import pandas as pd
+from sentence_transformers import SentenceTransformer
 from bertopic import BERTopic
+from sklearn.feature_extraction.text import CountVectorizer, ENGLISH_STOP_WORDS
+from umap import UMAP
 
-TOPIC_RESULT_COLUMNS = [
-    "article_id", "topic_id", "topic", "topic_keywords", "stable_topic_id", "model_version"
-]
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "provisional_topic_model_v2.pkl"
-TOPIC_CATALOG_PATH = Path(__file__).resolve().parent / "topic_catalog.json"
-EMERGING_POOL_PATH = DEFAULT_MODEL_PATH.parent / "emerging_topic_pool.json"
-_POOL_LOCK = threading.Lock()
+TOPIC_RESULT_COLUMNS = ["article_id", "topic_id", "topic", "topic_keywords"]
 
-
-def save_emerging_candidates(articles, results, pool_path=None):
-    """Queue unassigned text for review; never create topics or revise assignments."""
-    candidates = results[results["topic_id"] == -1]
-    if candidates.empty:
-        return 0
-    path = Path(pool_path) if pool_path is not None else EMERGING_POOL_PATH
-    texts = articles.set_index("id")["clean_content"].to_dict()
-    timestamp = datetime.now(timezone.utc).isoformat()
-    with _POOL_LOCK:
-        pool = json.loads(path.read_text()) if path.is_file() else {"schema_version": 1, "candidates": []}
-        if pool.get("schema_version") != 1:
-            raise ValueError("Unsupported emerging-topic pool version")
-        keys = {
-            (str(row["article_id"]), row["model_version"], row["text_sha256"])
-            for row in pool["candidates"]
-        }
-        added = 0
-        for row in candidates.to_dict(orient="records"):
-            text = texts[row["article_id"]]
-            digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-            key = (str(row["article_id"]), row["model_version"], digest)
-            if key in keys:
-                continue
-            pool["candidates"].append({
-                "article_id": row["article_id"],
-                "model_version": row["model_version"],
-                "text_sha256": digest,
-                "excerpt": " ".join(text.split())[:1000],
-                "review_status": "pending",
-                "review_notes": "",
-                "first_seen_at": timestamp,
-            })
-            keys.add(key)
-            added += 1
-        if added:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            temporary_path = None
-            try:
-                with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as stream:
-                    temporary_path = Path(stream.name)
-                    json.dump(pool, stream, indent=2)
-                    stream.write("\n")
-                temporary_path.replace(path)
-            finally:
-                if temporary_path is not None:
-                    temporary_path.unlink(missing_ok=True)
-        return added
-
-
-def get_model_registration(model_path):
-    """Bind reviewed topic IDs to an exact saved model, not a reusable filename."""
-    catalog = json.loads(TOPIC_CATALOG_PATH.read_text())
-    registration = catalog["models"].get(model_path.name)
-    if registration is None:
-        raise ValueError("Model is not registered in topic_catalog.json; review and register it first")
-    if not model_path.is_file():
-        raise ValueError("Registered model file is missing; restore it rather than retraining under the same version")
-    with model_path.open("rb") as stream:
-        digest = hashlib.file_digest(stream, "sha256").hexdigest()
-    if digest != registration["sha256"]:
-        raise ValueError("Model file changed; register the reviewed model under a new version")
-    mapping = registration["topic_mapping"]
-    if len(set(mapping.values())) != len(mapping):
-        raise ValueError("Model registration maps multiple clusters to the same permanent topic")
-    if any(topic not in catalog["topics"] for topic in mapping.values()):
-        raise ValueError("Model registration references an unknown permanent topic")
-    return registration
+REVIEWED_LABELS = {
+    # Labels observed in the latest full-data run.
+    "0_learning_according_policy_department":
+        "AI adoption and policies in schools",
+    "1_university_work_cheating_like":
+        "Academic integrity and assessment",
+    "2_social_media_learning_health":
+        "General education and school operations",
+    "3_university_college_financial_programs":
+        "Education access, finances, and governance",
+    "4_learning_thinking_reply_percent":
+        "Critical thinking and AI dependence",
+}
 
 def get_database():
     env_path = Path(__file__).resolve().parents[1] / "backend" / ".env"
@@ -107,26 +43,11 @@ def save_topic_results(results):
     if results.empty:
         return
 
-    # Pandas uses NaN for missing values; the database expects JSON null.
-    # Convert to object first so numeric columns can retain Python None.
-    records = results.astype(object).where(results.notna(), None).to_dict(orient="records")
-    json.dumps(records, allow_nan=False)
     database = get_database()
-    # Preserve existing article assignments; topic revisions require a separate workflow.
-    try:
-        database.table("topic_results").upsert(
-            records, on_conflict="article_id", ignore_duplicates=True
-        ).execute()
-    except APIError as exc:
-        if exc.code in {"PGRST204", "42703"}:
-            raise RuntimeError(
-                "Apply the topic identity migration before saving: "
-                "supabase/migrations/20261003000100_topic_identity.sql"
-            ) from exc
-        raise
+    records = results.to_dict(orient="records")
+    database.table("topic_results").upsert(records, on_conflict="article_id").execute()
 
 def load_articles(article_ids=None, page_size=500):
-    """Load eligible articles in ID order until the database returns no more rows."""
     if not isinstance(page_size, int) or isinstance(page_size, bool) or page_size < 1:
         raise ValueError("page_size must be a positive integer")
 
@@ -159,50 +80,56 @@ def load_articles(article_ids=None, page_size=500):
 
     return pd.DataFrame(records)
 
-
-def analyze_topics(articles, topic_count=None, summary=None, model_path=None):
-    model_path = Path(model_path) if model_path is not None else DEFAULT_MODEL_PATH
-    if summary is None:
-        summary = {}
-    summary.update({
-        "loaded": len(articles),
-        "eligible": 0,
-        "excluded_ineligible": 0,
-        "excluded_blank_text": 0,
-        "excluded_source_review": 0,
-        "duplicates_removed": 0,
-        "analyzed": 0,
-        "assigned": 0,
-        "unassigned": 0,
-    })
+def analyze_topics(articles, topic_count=None):
 
     if articles.empty:
         print("No eligible articles to analyze.")
         return pd.DataFrame(columns=TOPIC_RESULT_COLUMNS)
 
     # Require both relevance checks, successful processing, and usable text.
-    eligible = (
+    articles = articles[
         (articles["is_relevant"] == True)
         & (articles["llm_relevant"] == True)
         & (articles["processing_status"] == "success")
-    ).fillna(False)
-    summary["eligible"] = int(eligible.sum())
-    summary["excluded_ineligible"] = len(articles) - summary["eligible"]
-    articles = articles[eligible].copy()
-    has_text = articles["clean_content"].fillna("").str.strip().ne("")
-    summary["excluded_blank_text"] = int((~has_text).sum())
-    articles = articles[has_text].copy()
+        & articles["clean_content"].fillna("").str.strip().ne("")
+    ].copy()
     # Filter before deduplication so an ineligible copy cannot hide an eligible one.
-    before_deduplication = len(articles)
     articles = articles.drop_duplicates(subset="content_hash").reset_index(drop=True)
-    summary["duplicates_removed"] = before_deduplication - len(articles)
 
     if articles.empty:
         print("No eligible articles to analyze.")
         return pd.DataFrame(columns=TOPIC_RESULT_COLUMNS)
 
     article_content = articles["clean_content"].tolist()
-    registration = get_model_registration(model_path)
+
+    # Small batches cannot reliably support topic discovery.
+    if len(articles) < 10:
+        return pd.DataFrame({
+            "article_id": articles["id"].tolist(),
+            "topic_id": [-1] * len(articles),
+            "topic": ["Unassigned"] * len(articles),
+            "topic_keywords": [""] * len(articles),
+        })
+
+    def build_topic_model(min_topic_size: int = 10):
+        #Model to filter out stop words
+        domain_stop_words = {
+        "ai", "artificial", "intelligence", "education", "educational",
+        "student", "students", "school", "schools", "teacher", "teachers",
+        "said", "says", "say", "new", "use", "used", "using",
+        "educators", "tools", "tool", "help", "systems", "generated",
+        "technology", "information", "districts", "district", "automated", "support", "12"
+        }
+
+        vectorizer_model = CountVectorizer(stop_words=list(ENGLISH_STOP_WORDS | domain_stop_words), ngram_range=(1, 1), min_df=1, max_df=1.0)
+
+        umap_model = UMAP(n_neighbors=8, n_components=5, min_dist=0.0, metric="cosine", random_state=42)
+
+        embedding_model = SentenceTransformer("all-mpnet-base-v2")
+
+        topic_model = BERTopic(embedding_model=embedding_model, vectorizer_model=vectorizer_model, umap_model=umap_model, min_topic_size=min_topic_size, nr_topics=topic_count)
+
+        return topic_model, embedding_model
 
     def build_topic_results(articles):
 
@@ -213,23 +140,21 @@ def analyze_topics(articles, topic_count=None, summary=None, model_path=None):
         }
     ).copy()
 
-    # Inference requires a registered saved model; training is a deliberate operation.
-    topic_model = BERTopic.load(str(model_path))
-    topics, probabilities = topic_model.transform(article_content)
-    print(f"Reused saved topic model: {model_path.name}")
+    topic_model, embedding_model = build_topic_model()
+
+    embeddings = embedding_model.encode(article_content)
+
+    #Find topics
+    topics, probabilities = topic_model.fit_transform(article_content, embeddings)
 
     topic_info = topic_model.get_topic_info().set_index("Topic")
-    known_topics = {str(topic) for topic in topic_info.index if topic != -1}
-    if known_topics != set(registration["topic_mapping"]):
-        raise ValueError("Model topics do not match the reviewed topic registration")
 
-    # Reviewed labels belong to this saved model, not generated names from old runs.
-    label_column = "CustomName" if "CustomName" in topic_info.columns else "Name"
     if -1 in topic_info.index:
-        topic_info.loc[-1, label_column] = "Unassigned"
+        topic_info.loc[-1, "Name"] = "Unassigned"
 
     articles["topic_id"] = topics
-    articles["topic_label"] = articles["topic_id"].map(topic_info[label_column])
+    articles["topic_label"] = articles["topic_id"].map(topic_info["Name"])
+    articles["topic_label"] = articles["topic_label"].replace(REVIEWED_LABELS)
 
     topic_keywords = {
     topic_id: "; ".join(
@@ -246,28 +171,17 @@ def analyze_topics(articles, topic_count=None, summary=None, model_path=None):
     )
 
     topic_results = build_topic_results(articles)
-    topic_results["stable_topic_id"] = [
-        None if topic == -1 else registration["topic_mapping"][str(topic)]
-        for topic in topics
-    ]
-    topic_results["model_version"] = registration["version"]
-    summary["analyzed"] = len(topic_results)
-    summary["unassigned"] = int((topic_results["topic_id"] == -1).sum())
-    summary["assigned"] = summary["analyzed"] - summary["unassigned"]
 
     return topic_results
 
 def run_topic_agent(articles, topic_count=None):
-    summary = {}
     try:
-        results = analyze_topics(articles, topic_count, summary=summary)
-        summary["emerging_candidates_added"] = save_emerging_candidates(articles, results)
+        results = analyze_topics(articles, topic_count)
 
         return {
             "agent": "topic",
             "status": "success" if not results.empty else "skipped",
             "results": results,
-            "summary": summary,
             "error": None,
         }
 
@@ -276,7 +190,6 @@ def run_topic_agent(articles, topic_count=None):
             "agent": "topic",
             "status": "failed",
             "results": pd.DataFrame(columns=TOPIC_RESULT_COLUMNS),
-            "summary": summary,
             "error": {
                 "type": type(exc).__name__,
                 "message": str(exc),
@@ -292,15 +205,18 @@ class TopicAgent:
     def run(self, ctx):
         articles = load_articles(ctx.approved_ids)
 
-        summary = {}
-        results = analyze_topics(articles, topic_count=self.topic_count, summary=summary)
-        summary["emerging_candidates_added"] = save_emerging_candidates(articles, results)
+        if articles.empty:
+            return {
+                "processed": 0,
+                "article_ids": [],
+            }
+
+        results = analyze_topics(articles, topic_count=self.topic_count)
         save_topic_results(results)
 
         return {
             "processed": len(results),
             "article_ids": results["article_id"].tolist(),
-            "summary": summary,
         }
 
 if __name__ == "__main__":
@@ -315,9 +231,6 @@ if __name__ == "__main__":
         raise SystemExit(2)
 
     outcome = run_topic_agent(articles, topic_count=6)
-    print("Topic processing summary:")
-    for name, count in outcome["summary"].items():
-        print(f"  {name.replace('_', ' ')}: {count}")
 
     if outcome["status"] == "failed":
         error = outcome["error"]
