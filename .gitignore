@@ -9,6 +9,7 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+topic_model_agent/models/
 
 # Editor/OS
 .vscode/
