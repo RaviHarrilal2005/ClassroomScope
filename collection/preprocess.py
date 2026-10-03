@@ -79,7 +79,7 @@ def run(limit=None):
     query = (
         _supabase.table("articles")
         .select("id, url")
-        .eq("is_relevant", True)
+	.eq("llm_relevant", True)
         .eq("processing_status", "pending")
     )
     if limit:

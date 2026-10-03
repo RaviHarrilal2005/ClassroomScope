@@ -1,89 +1,50 @@
 # filter_relevance.py
-"""Relevance filter (F.3) — refined to reduce false positives.
-
-Strategy: an article is relevant only if at least one sentence contains
-BOTH a GenAI signal AND an education signal. Ambiguous words like
-"classroom" and "learning" are removed from the education list because
-they appear in non-educational contexts (corporate training rooms,
-machine learning papers, museum tours).
+"""Keyword relevance filter — RECALL pass only.
+Loosened deliberately: the LLM verification step downstream
+(llm_verify_relevance.py) provides precision. This filter's only
+job is to eliminate articles that never mention AI or education
+at all.
 """
 
 import re
 from db import _supabase
 
-# Strong signals — specific to generative AI in education contexts.
-GAI_STRONG = [
-    "generative ai", "genai", "gen ai", "chatgpt", "gpt-4", "gpt-3",
-    "large language model", "llm", "claude ai", "google gemini",
-    "ai chatbot", "ai writing", "ai essay", "ai cheating",
-    "ai plagiarism", "ai detection", "ai tutor", "ai teaching assistant",
+# Any of these signals a GenAI/AI mention.
+GAI_PATTERNS = [
+    r"\bgenerative ai\b", r"\bgenai\b", r"\bgen ai\b",
+    r"\bchatgpt\b", r"\bgpt-?[345]\b", r"\bgpt\b",
+    r"\blarge language model", r"\bllm\b", r"\bllms\b",
+    r"\bclaude\b", r"\bgemini\b", r"\bcopilot\b",
+    r"\bartificial intelligence\b", r"\bmachine learning\b",
+    r"\bai\b",  # word boundary — won't match "email", "said", etc.
 ]
 
-# Weaker but still indicative — must co-occur with a STRONG education term.
-GAI_WEAK = [
-    "artificial intelligence", "ai tool", "ai model", "ai system",
-    "ai assistant", "machine learning", "neural network",
+# Any of these signals an education context.
+EDU_PATTERNS = [
+    r"\bstudent", r"\bteacher", r"\bprofessor", r"\bfaculty",
+    r"\bcurriculum\b", r"\bclassroom", r"\buniversity\b",
+    r"\buniversities\b", r"\bcollege", r"\bhigher ed",
+    r"\bk-12\b", r"\bschool", r"\beducation",
+    r"\bacademic\b", r"\bessay\b", r"\bhomework\b",
+    r"\bassignment", r"\bexam\b", r"\bpedagog",
 ]
 
-# Education signals — specific to educational contexts.
-EDU_STRONG = [
-    "student", "teacher", "professor", "faculty", "curriculum",
-    "classroom", "university", "college", "higher education",
-    "higher ed", "k-12", "school district", "academic integrity",
-    "essay", "homework", "assignment", "exam", "coursework",
-    "dean", "provost", "school board", "education",
-]
-
-# Anything matching here forces relevance to FALSE, regardless of score.
-DISQUALIFIERS = [
-    "fire safety", "firefighter", "military training", "corporate training",
-    "healthcare", "hospital", "medical diagnosis", "clinical trial",
-    "customer service", "sales team", "supply chain", "manufacturing",
-    "cybersecurity", "autonomous vehicle", "self-driving",
-]
-
-
-def _has_any(text, terms):
-    return any(t in text for t in terms)
-
-
-def _split_sentences(text):
-    """Naive sentence splitter."""
-    return re.split(r"(?<=[.!?])\s+", text)
+_GAI = re.compile("|".join(GAI_PATTERNS), re.IGNORECASE)
+_EDU = re.compile("|".join(EDU_PATTERNS), re.IGNORECASE)
 
 
 def is_relevant(title, content):
-    """Returns True if any sentence contains both a GenAI and an
-    education signal, and no disqualifier matches."""
-    text = f"{title or ''} {content or ''}".lower()
-
-    if _has_any(text, DISQUALIFIERS):
-        return False
-
-    for sentence in _split_sentences(text):
-        sent = sentence.lower()
-        has_gai = _has_any(sent, GAI_STRONG) or _has_any(sent, GAI_WEAK)
-        has_edu = _has_any(sent, EDU_STRONG)
-        if has_gai and has_edu:
-            # If we only have a WEAK GenAI term, require a STRONG edu term too.
-            if (_has_any(sent, GAI_WEAK)
-                    and not _has_any(sent, GAI_STRONG)
-                    and not _has_any(sent, ["student", "teacher",
-                                            "education", "university",
-                                            "college", "school"])):
-                continue
-            return True
-    return False
+    text = f"{title or ''}\n{content or ''}"
+    return bool(_GAI.search(text)) and bool(_EDU.search(text))
 
 
 def run():
-    response = (
+    rows = (
         _supabase.table("articles")
         .select("id, title, content")
         .is_("is_relevant", "null")
         .execute()
-    )
-    rows = response.data or []
+    ).data or []
     print(f"Checking {len(rows)} unclassified articles...")
 
     relevant = 0
