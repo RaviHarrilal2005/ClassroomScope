@@ -173,15 +173,17 @@ class SecurityAgent(Agent):
     is left out of approved_ids, so no analysis agent is given it.
 
     max_length raises the filter's cap for article bodies. The filter's
-    own default is 5000 characters, which suits the user comments it was
-    first written for; 68% of the articles in the corpus are longer than
-    that, so the default would quarantine most of them for length alone.
+    own default is 50,000 characters, and the longest article in the
+    corpus is twice that, so the default would quarantine the longest
+    articles for length alone.
 
     TWO THINGS THIS DOES NOT DO, both deliberate:
 
-      * It does not persist the quarantine decision. There is no table
-        for it, and adding one is a schema change for the team rather
-        than something to slip in here. Decisions are logged at WARNING
+      * It does not persist the quarantine decision. The security
+        owners' agents/security/quarantine.py writes rejections to
+        quarantined_content, but over a direct Postgres connection
+        that the pipeline does not have, and that table was created
+        outside this repo's migrations. Decisions are logged at WARNING
         and counted by reason in the returned summary, which is enough
         to see what a run rejected and why, but they are not queryable
         after the fact. See docs/pipeline-coordinator.md.
@@ -191,9 +193,9 @@ class SecurityAgent(Agent):
         from the database, so they still see the unredacted article.
         Screening currently decides pass/quarantine only.
 
-    The filter scores 29/45 against its own adversarial suite
-    (agents/security/adversarial_test_set.py). It is wired in as-is; the
-    gap is the security owner's to close, and is recorded in the docs.
+    The filter scores 44/45 against its own adversarial suite
+    (agents/security/adversarial_test_set.py). The miss is a full name,
+    which a pattern cannot catch; the filter's own docs say it needs NER.
     """
 
     name = "security"
@@ -256,12 +258,12 @@ class SecurityAgent(Agent):
 
     def _screen(self, text_filter: Any, text: str) -> Any:
         """Run the filter with the article-sized length cap."""
-        original = text_filter.MAX_COMMENT_LENGTH
-        text_filter.MAX_COMMENT_LENGTH = self.max_length
+        original = text_filter.MAX_TEXT_LENGTH
+        text_filter.MAX_TEXT_LENGTH = self.max_length
         try:
-            return text_filter.sanitize_comment(text)
+            return text_filter.sanitize_text(text)
         finally:
-            text_filter.MAX_COMMENT_LENGTH = original
+            text_filter.MAX_TEXT_LENGTH = original
 
 
 # ---------------------------------------------------------------------

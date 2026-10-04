@@ -18,7 +18,10 @@ Usage inside the collection/screening loop:
         skip()              # rejection already logged for review
 """
 
-from text_filter import sanitize_text
+try:
+    from .text_filter import sanitize_text
+except ImportError:  # running the file directly, not importing the package
+    from text_filter import sanitize_text
 
 EXCERPT_CHARS = 400
 

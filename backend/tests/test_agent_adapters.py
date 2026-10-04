@@ -186,26 +186,26 @@ def test_security_approves_clean_articles_and_quarantines_injections(fake_client
 
 def test_long_articles_are_not_quarantined_for_length(fake_client):
     """
-    The filter's own 5000-character default is sized for user comments.
-    68% of the corpus is longer, so screening articles with it would
-    quarantine most of them for length alone.
+    The filter's own 50,000-character default is below the longest
+    articles in the corpus, so screening with it would quarantine them
+    for length alone.
     """
-    long_article = article(1, content="The district met to discuss the policy. " * 1000)
+    long_article = article(1, content="The district met to discuss the policy. " * 2000)
     fake_client(articles=[long_article])
     ctx = RunContext(run_id=1, article_ids=[1])
 
     assert SecurityAgent().run(ctx)["approved_ids"] == [1]
-    assert SecurityAgent(max_length=5000).run(ctx)["quarantine_reasons"] == {"exceeds_max_length": 1}
+    assert SecurityAgent(max_length=50_000).run(ctx)["quarantine_reasons"] == {"exceeds_max_length": 1}
 
 
 def test_the_filters_own_default_is_left_alone(fake_client):
     """Raising the cap for articles must not change it for other callers."""
     from agents.security import text_filter
 
-    before = text_filter.MAX_COMMENT_LENGTH
+    before = text_filter.MAX_TEXT_LENGTH
     fake_client(articles=[article(1)])
     SecurityAgent().run(RunContext(run_id=1, article_ids=[1]))
-    assert text_filter.MAX_COMMENT_LENGTH == before
+    assert text_filter.MAX_TEXT_LENGTH == before
 
 
 def test_an_article_that_cannot_be_read_is_quarantined_not_dropped(fake_client):

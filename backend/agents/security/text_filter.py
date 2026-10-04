@@ -6,7 +6,10 @@ import re
  
 import bleach
  
-from injection_normalization import screen_for_injection
+try:
+    from .injection_normalization import screen_for_injection
+except ImportError:  # running the file directly, not importing the package
+    from injection_normalization import screen_for_injection
  
 # Articles in this corpus commonly run 10k-30k chars; keep the ceiling above
 # that range but still reject truly massive payloads.
