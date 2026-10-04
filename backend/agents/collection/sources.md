@@ -2,30 +2,37 @@
 
 ## RSS Feeds (6)
 
-1. **The Hechinger Report** - https://hechingerreport.org/feed/
-
+1. **The Hechinger Report** - https://hechingerreport.org/
 - Topics: Education, innovation, policy
 - Notes: Looks for AI/edtech articles
 
-2. **Inside Higher Ed** - https://www.insidehighered.com/rss.xml
+2. **Inside Higher Ed** - https://www.insidehighered.com/
 - Topics: Higher education, faculty, administration
 - Notes: Strong coverage of AI in college settings
 
-3. **EdSurge** - https://www.edsurge.com/articles_rss
+3. **EdSurge** - https://www.edsurge.com/
 - Topics: Research, technology, education resources
 - Notes: Focuses on education technology
 
-4. **Higher Ed Dive** - https://www.highereddive.com/feeds/news/
+4. **Higher Ed Dive** - https://www.highereddive.com/
 - Topics: Policies, leadership, enrollment
 - Notes: College-oriented discussions
 
-5. **eSchool News** - https://www.eschoolnews.com/feed/
+5. **eSchool News** - https://www.eschoolnews.com/
 - Topics: Education innovations, insights, resources
 - Notes: Centers on teaching, leadership, well-being
 
-6. **The Conversation** - https://theconversation.com/articles.atom?section=education
+6. **The Conversation** - https://theconversation.com/
 - Topics: Academic rigor, journalism, analysis
 - Notes: Dedicated coverage on AI and Education
+
+7. **The Chronicle of Higher Education** - https://www.chronicle.com/
+- Topics: intelligence, career development, innovate
+- Notes: Empower with insight the world of higher education
+
+8. **Tech & Learning** - https://www.techlearning.com/
+- Topics: Improvement, leadership, technology
+- Notes: Written effective implementations for education improvements
 
 ## News APIs (2)
 
@@ -42,3 +49,4 @@
 ## Additional Notes
 - All sources are English-language news articles
 - Focus on Generative AI, ChatGPT, and AI policy in education
+

@@ -1,31 +1,42 @@
 # filter_relevance.py
-"""Mark articles as relevant (GenAI + education) or not.
-Reads all rows where is_relevant IS NULL, checks keywords, writes the flag.
-Usage:
-    python filter_relevance.py
+"""Keyword relevance filter — RECALL pass only.
+Loosened deliberately: the LLM verification step downstream
+(llm_verify_relevance.py) provides precision. This filter's only
+job is to eliminate articles that never mention AI or education
+at all.
 """
+
+import re
 
 from ..supabase_client import get_client
 
-# Must hit at least one from each list to qualify.
-GAI_TERMS = [
-    "generative ai", "genai", "gen ai", "chatgpt", "gpt-4", "gpt-3",
-    "llm", "large language model", "claude", "gemini", "copilot",
-    "artificial intelligence", "ai tool", "ai model", "ai",
+# Any of these signals a GenAI/AI mention.
+GAI_PATTERNS = [
+    r"\bgenerative ai\b", r"\bgenai\b", r"\bgen ai\b",
+    r"\bchatgpt\b", r"\bgpt-?[345]\b", r"\bgpt\b",
+    r"\blarge language model", r"\bllm\b", r"\bllms\b",
+    r"\bclaude\b", r"\bgemini\b", r"\bcopilot\b",
+    r"\bartificial intelligence\b", r"\bmachine learning\b",
+    r"\bai\b",  # word boundary — won't match "email", "said", etc.
 ]
 
-EDU_TERMS = [
-    "education", "school", "student", "teacher", "faculty", "classroom",
-    "university", "college", "curriculum", "higher ed", "k-12",
-    "academic", "professor", "campus", "learning", "elementary",
+# Any of these signals an education context.
+EDU_PATTERNS = [
+    r"\bstudent", r"\bteacher", r"\bprofessor", r"\bfaculty",
+    r"\bcurriculum\b", r"\bclassroom", r"\buniversity\b",
+    r"\buniversities\b", r"\bcollege", r"\bhigher ed",
+    r"\bk-12\b", r"\bschool", r"\beducation",
+    r"\bacademic\b", r"\bessay\b", r"\bhomework\b",
+    r"\bassignment", r"\bexam\b", r"\bpedagog",
 ]
+
+_GAI = re.compile("|".join(GAI_PATTERNS), re.IGNORECASE)
+_EDU = re.compile("|".join(EDU_PATTERNS), re.IGNORECASE)
 
 
 def is_relevant(title, content):
-    text = f"{title or ''} {content or ''}".lower()
-    has_gai = any(term in text for term in GAI_TERMS)
-    has_edu = any(term in text for term in EDU_TERMS)
-    return has_gai and has_edu
+    text = f"{title or ''}\n{content or ''}"
+    return bool(_GAI.search(text)) and bool(_EDU.search(text))
 
 
 def run(article_ids=None):
@@ -50,18 +61,17 @@ def run(article_ids=None):
     rows = response.data or []
     print(f"Checking {len(rows)} unclassified articles...")
 
-    relevant_count = 0
+    relevant = 0
     for row in rows:
         flag = is_relevant(row.get("title"), row.get("content"))
         get_client().table("articles").update(
             {"is_relevant": flag}
         ).eq("id", row["id"]).execute()
-        relevant_count += int(flag)
+        relevant += int(flag)
 
-    print(f"Marked {relevant_count} as relevant, "
-          f"{len(rows) - relevant_count} as irrelevant.")
-    return {"checked": len(rows), "relevant": relevant_count,
-            "irrelevant": len(rows) - relevant_count}
+    print(f"Marked {relevant} relevant, {len(rows) - relevant} irrelevant.")
+    return {"checked": len(rows), "relevant": relevant,
+            "irrelevant": len(rows) - relevant}
 
 
 if __name__ == "__main__":

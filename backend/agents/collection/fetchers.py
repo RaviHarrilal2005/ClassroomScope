@@ -41,6 +41,19 @@ SEARCH_QUERIES = [
     "artificial intelligence classroom",
     "AI cheating university",
     "LLM college students",
+    "AI writing assistant university",
+    "ChatGPT essay plagiarism",
+    "student use of generative AI",
+    "AI in higher education teaching",
+    "professor AI grading",
+    "generative AI faculty concerns",
+    "university AI policy",
+    "AI regulation higher education",
+    "academic integrity AI",
+    "AI chatbot university website",
+    "personalized learning AI college",
+    "artificial intelligence university",
+    "AI edtech",
 ]
 
 RSS_FEEDS = [
@@ -50,6 +63,8 @@ RSS_FEEDS = [
     "https://www.highereddive.com/feeds/news/",
     "https://www.eschoolnews.com/feed/",
     "https://theconversation.com/articles.atom?section=education",
+    "https://www.chronicle.com/index.atom",
+    "https://www.techlearning.com/feeds.xml",
 ]
 
 def fetch_from_newsapi(page_size=100):
@@ -70,6 +85,7 @@ def fetch_from_newsapi(page_size=100):
             "pageSize": page_size,
             "apiKey": news_api_key,
         }
+    
         try:
             response = requests.get(url, params=params, timeout=15)
             response.raise_for_status()
