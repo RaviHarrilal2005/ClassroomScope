@@ -3,17 +3,19 @@
  *
  * STATUS:
  *   - AdminConsole is built and backed by real data.
- *   - The results section below still renders the hardcoded /results
- *     payload. It is labelled as placeholder rather than left to look
- *     real: sentiment_results has no rows and no sentiment agent exists,
- *     so those percentages are invented, not stale.
+ *   - The results sections below render the hardcoded /results payload:
+ *     sentiment and topics as charts (VisualizationViews), articles as
+ *     a table. Each is labelled as placeholder rather than left to look
+ *     real: nothing aggregates the analysis tables into /results yet,
+ *     so those figures are invented, not stale.
  *
- * NOT built yet: FilterPanel, VisualizationViews (real charts),
- * ExportControls. See design doc Section 2 for what each needs to do.
+ * NOT built yet: FilterPanel, ExportControls. See design doc Section 2
+ * for what each needs to do.
  */
 import { useEffect } from "react";
 import { useViewState } from "../state/ViewStateContext";
 import AdminConsole from "./AdminConsole";
+import { SentimentDonut, TopTopicsBar } from "./VisualizationViews";
 
 export default function DashboardShell() {
   const { results, loading, error, loadResults } = useViewState();
@@ -40,16 +42,21 @@ export default function DashboardShell() {
             <section>
               <h3 style={{ marginBottom: "4px" }}>Sentiment toward GAI in education</h3>
               <PlaceholderNote>
-                Placeholder figures. <code>sentiment_results</code> is empty and no sentiment
-                agent exists yet, so these percentages are invented — not computed from the
-                corpus.
+                Placeholder figures, hardcoded in the <code>/results</code> stub — not computed
+                from the corpus. Nothing aggregates <code>sentiment_results</code> into this
+                endpoint yet.
               </PlaceholderNote>
-              <ul>
-                <li>Positive: {(results.sentiment_distribution.positive * 100).toFixed(0)}%</li>
-                <li>Neutral: {(results.sentiment_distribution.neutral * 100).toFixed(0)}%</li>
-                <li>Negative: {(results.sentiment_distribution.negative * 100).toFixed(0)}%</li>
-              </ul>
-              {/* TODO: replace this list with the real donut chart component */}
+              <SentimentDonut distribution={results.sentiment_distribution} />
+            </section>
+
+            <section style={{ marginTop: "20px" }}>
+              <h3 style={{ marginBottom: "4px" }}>Top topics</h3>
+              <PlaceholderNote>
+                Placeholder figures, hardcoded in the <code>/results</code> stub — not computed
+                from the corpus. Nothing aggregates <code>topic_results</code> into this
+                endpoint yet.
+              </PlaceholderNote>
+              <TopTopicsBar topics={results.top_topics} />
             </section>
 
             <section style={{ marginTop: "20px" }}>

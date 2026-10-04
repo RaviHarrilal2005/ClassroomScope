@@ -28,8 +28,8 @@ building out the real views.
 
 ## What's NOT built yet
 
-- FilterPanel, real charts (VisualizationViews), ExportControls,
-  AdminConsole — see design doc Section 2 for what each needs to do
+- FilterPanel and ExportControls — see design doc Section 2 for what
+  each needs to do
 - Auth / session context (SS-5 login) — apiClient has TODOs where the
   token will attach
 - Run-status poller
@@ -117,10 +117,9 @@ the Flask stub, not placeholder text.
 ## Next steps (planned)
 
 1. Build FilterPanel and wire it into ViewStateContext
-2. Swap the plain HTML list/table for a real charting library
-3. Connect apiClient to the real Data Access Layer once SS-1/SS-2/SS-3
+2. Connect apiClient to the real Data Access Layer once SS-1/SS-2/SS-3
    are integrated (see WBS, tasks under 4.5)
-4. Add auth context once SS-5 login exists
+3. Add auth context once SS-5 login exists
 
 ## This week: initial site design refinement
 
@@ -137,9 +136,10 @@ layer rather than fetching independently.
 1. **FilterPanel** — controls for narrowing the results shown in
    `DashboardShell`. Should read/write filter state via
    `ViewStateContext.jsx` rather than owning its own state.
-2. **VisualizationViews** — replace the plain sentiment
-   breakdown/article list in `DashboardShell.jsx` with real charts.
-   Pick a charting library as a team before splitting up chart types.
+2. **VisualizationViews** — built (`VisualizationViews.jsx`, using
+   Recharts): a sentiment donut and a top-topics bar chart. New chart
+   types should use Recharts too. The article list stays a table: a
+   chart of a handful of rows would present a sample as a distribution.
 3. **ExportControls** — UI for exporting the current view/results
    (format TBD — propose an approach if it's not obvious from the
    design doc).

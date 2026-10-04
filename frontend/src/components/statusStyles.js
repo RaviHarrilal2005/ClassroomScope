@@ -13,11 +13,11 @@
  * vision deficiency.
  */
 
-const GREY = { fg: "#4A4A4A", bg: "#ECECEC", border: "#D4D4D4" };
-const BLUE = { fg: "#1F4E79", bg: "#E1EDF8", border: "#B9D4EC" };
-const GREEN = { fg: "#1E6B3A", bg: "#E4F3E9", border: "#BFE0CB" };
+export const GREY = { fg: "#4A4A4A", bg: "#ECECEC", border: "#D4D4D4" };
+export const BLUE = { fg: "#1F4E79", bg: "#E1EDF8", border: "#B9D4EC" };
+export const GREEN = { fg: "#1E6B3A", bg: "#E4F3E9", border: "#BFE0CB" };
 const AMBER = { fg: "#8A5A00", bg: "#FDF1DC", border: "#F0D9A8" };
-const RED = { fg: "#A33A34", bg: "#FBE7E6", border: "#F0C4C1" };
+export const RED = { fg: "#A33A34", bg: "#FBE7E6", border: "#F0C4C1" };
 
 export const RUN_STATUS = {
   running: { ...BLUE, label: "running" },
