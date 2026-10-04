@@ -16,8 +16,9 @@ Run the pipeline once from the terminal and print what happened.
 
 By default this uses stub agents and in-memory storage, so it needs no
 database. --live swaps in the real collection, security and
-classification agents; the stages with no implementation yet (sentiment,
-topic, stance, aggregation) stay stubbed either way.
+classification agents, and the topic agent where BERTopic and a saved
+topic model are installed; sentiment, stance and aggregation stay
+stubbed either way.
 
 Run status is always kept in memory here, never written to
 pipeline_runs — this is a demo harness, and a run from it should not

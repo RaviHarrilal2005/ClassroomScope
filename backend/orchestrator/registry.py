@@ -13,7 +13,9 @@ module never reaches for Supabase credentials.
 """
 from __future__ import annotations
 
+import importlib.util
 import logging
+from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 from . import agents
@@ -29,6 +31,9 @@ from .stages import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Saved topic models: gitignored, restored by hand (agents/topic/TOPIC_IDENTITY.md).
+TOPIC_MODELS = Path(__file__).resolve().parents[1] / "agents" / "topic" / "models"
 
 
 class AgentRegistry:
@@ -69,7 +74,7 @@ def build_default_registry(live: Optional[bool] = None, **collection_options) ->
                machine with no .env, while a configured deployment gets
                the real pipeline without a code change.
 
-    Stages with no implementation on any branch stay stubbed whatever
+    Stages with no agent the pipeline can call stay stubbed whatever
     `live` says -- see agents/adapters.py for which is which.
 
     collection_options are passed to CollectionAgent (backlog=True,
@@ -83,7 +88,7 @@ def build_default_registry(live: Optional[bool] = None, **collection_options) ->
         live = is_configured()
 
     if live:
-        from agents.adapters import ClassificationAgent, CollectionAgent, SecurityAgent
+        from agents.adapters import ClassificationAgent, CollectionAgent, SecurityAgent, TopicAgent
 
         logger.info("Registry: real agents for collection, security and classification")
         registry.register(COLLECTION, CollectionAgent(**collection_options))
@@ -98,19 +103,26 @@ def build_default_registry(live: Optional[bool] = None, **collection_options) ->
         else:
             logger.info("Registry: TRUSSED_API_KEY not set, using the keyword classifier")
             registry.register(CLASSIFICATION, ClassificationAgent("baseline"))
+        # Where the topic model cannot run, the stage would fail on every
+        # run, so it stays stubbed until BERTopic and a saved model are here.
+        if _topic_model_available():
+            logger.info("Registry: saved topic model found, using the topic agent")
+            registry.register(TOPIC, TopicAgent())
+        else:
+            logger.info("Registry: no saved topic model or no BERTopic, topic stays stubbed")
+            registry.register(TOPIC, agents.stub_analysis(TOPIC))
     else:
         logger.info("Registry: stub agents (Supabase not configured)")
         registry.register(COLLECTION, agents.stub_collection())
         registry.register(SECURITY, agents.stub_security())
         registry.register(CLASSIFICATION, agents.stub_analysis(CLASSIFICATION))
+        registry.register(TOPIC, agents.stub_analysis(TOPIC))
 
-    # No implementation on any branch yet.
+    # Nothing the pipeline can call yet: sentiment is a standalone script
+    # (agents/sentiment/), and stance has no implementation.
     registry.register(SENTIMENT, agents.stub_analysis(SENTIMENT),
                       fallback=agents.stub_fallback(SENTIMENT))
     registry.register(STANCE, agents.stub_analysis(STANCE))
-    # agents/topic/topic_model.py runs standalone but pulls in ~2GB of ML
-    # libraries, so the stage is stubbed on purpose. See the docs.
-    registry.register(TOPIC, agents.stub_analysis(TOPIC))
     registry.register(AGGREGATION, agents.stub_aggregation())
     return registry
 
@@ -132,3 +144,16 @@ def _luna_configured() -> bool:
     from agents.config import optional_key
 
     return bool(optional_key("TRUSSED_API_KEY") and optional_key("TRUSSED_BASE_URL"))
+
+
+def _topic_model_available() -> bool:
+    """
+    Whether the topic stage can run here: BERTopic is installed and a
+    saved model has been restored to TOPIC_MODELS.
+
+    Most machines have neither. The model is gitignored and restored by
+    hand, and BERTopic is ~2GB. Checked without importing BERTopic.
+    Whether the file is the right model is the topic module's own check,
+    which fails the stage loudly rather than train a replacement.
+    """
+    return importlib.util.find_spec("bertopic") is not None and any(TOPIC_MODELS.glob("*.pkl"))

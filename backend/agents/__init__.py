@@ -7,9 +7,10 @@ thin `Agent` subclasses the coordinator actually calls live in
 `adapters.py`, so an owner can keep editing their own module without
 touching orchestrator code.
 
-  collection/     fetch, dedupe, relevance-filter and preprocess articles
+  collection/     fetch, dedupe, relevance-check and preprocess articles
   security/       sanitization filter (prompt injection, HTML, PII)
   classification/ stakeholder + source-type classifiers (keyword & LLM)
-  topic/          BERTopic topic model - standalone script, not yet wired
-                  into the pipeline (see docs/pipeline-coordinator.md)
+  topic/          topic assignment from a saved BERTopic model
+  sentiment/      RoBERTa + VADER sentiment - standalone script, not yet
+                  wired into the pipeline (see docs/pipeline-coordinator.md)
 """

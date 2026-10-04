@@ -44,12 +44,14 @@ and records each stage's status. It retries collection, skips analysis
 if security screening fails, uses a fallback when sentiment fails, and
 keeps the results of stages that succeeded when another fails.
 
-- **Three of the seven agents are real**: collection (news APIs + RSS,
-  dedupe, relevance filter, body extraction), security (content
-  sanitization screening) and classification (stakeholder and source
-  type). Sentiment, stance and aggregation have no implementation yet;
-  the topic model works but needs ~2GB of ML libraries, so its stage is
-  still stubbed. Each owner's code lives in `backend/agents/<stage>/`.
+- **Four of the seven agents are real**: collection (news APIs + RSS,
+  dedupe, keyword then LLM relevance check, body extraction), security
+  (content sanitization screening), classification (stakeholder and
+  source type) and topic (a saved BERTopic model, whose file is restored
+  by hand; where it is missing, topic stays a stub). Sentiment exists as
+  a standalone script that is not wired in
+  yet; stance and aggregation have no implementation. Each owner's code
+  lives in `backend/agents/<stage>/`.
 - The registry picks real agents when Supabase is configured and stubs
   otherwise, so the app and the tests still work without credentials.
 - Run status is written to **Supabase** (`pipeline_runs` /
@@ -84,9 +86,12 @@ should be the **secret** (`sb_secret_…`) key — the publishable key has no
 write access to the run tables. Without a `.env` the backend still runs,
 but keeps run status in memory only.
 
-The news-API and LLM-classifier keys in `.env.example` are optional: a
-source or classifier with no real key is skipped, and an unfilled
-placeholder counts as no key.
+The news-API keys in `.env.example` are optional: a source with no real
+key is skipped, and an unfilled placeholder counts as no key. The
+`TRUSSED_*` LLM keys are needed to collect new articles, since an
+article is only kept once the LLM confirms it is relevant; without them
+a live collection run fails up front, and classification falls back to
+its keyword scorer. `--backlog` runs need neither.
 
 **Pipeline demo and tests** (from `backend`)
 ```
@@ -95,7 +100,7 @@ python run_pipeline.py                   # run once with stubs, print each stage
 python run_pipeline.py --fail topic      # see how a failing agent is handled
 python run_pipeline.py --live --backlog  # the real agents, over articles already
                                          # stored (no API quota, no downloads)
-python -m pytest tests                   # run the test suite (89 tests)
+python -m pytest tests agents/topic      # run the test suite (98 tests)
 python -m pyright backend/               # type check (from the repo root)
 ```
 

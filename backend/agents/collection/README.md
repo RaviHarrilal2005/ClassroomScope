@@ -2,7 +2,7 @@
 
 **Owner:** Juan Reyes\
 **Consumers:** Orchestrator (Ravi), Analysis Agents, Security Subsystem\
-**Last updated:** September 28, 2026\
+**Last updated:** October 3, 2026\
 **Status:** Complete and tested in isolation. Ready for orchestration integration.
 
 ## 1. Purpose
@@ -19,8 +19,13 @@ this order:
 
 1. **fetch** — pull article metadata from APIs and RSS feeds
 2. **store** — normalize + dedup + insert into `articles`
-3. **filter** — mark articles as relevant (F.3)
-4. **preprocess** — fetch full article text, extract body (F.5)
+3. **keyword filter** — mark candidate relevant articles (F.3, recall)
+4. **LLM verify** — confirm relevance with GPT-5.6-Luna (F.3, precision)
+5. **preprocess** — fetch full article text, extract body (F.5)
+
+Stages 3 and 4 form a two-tier relevance filter. Stage 3 is
+deliberately permissive (recall); stage 4 applies precision.
+Downstream stages (5 and 6) gate on `llm_relevant = true`.
 
 Each stage is idempotent. Re-running never produces duplicates and
 never corrupts prior results.
@@ -32,6 +37,7 @@ never corrupts prior results.
 | `fetchers.py` | fetch | `fetch_all()` |
 | `db.py` | store | `insert_articles(articles)` |
 | `filter_relevance.py` | filter | `run()` |
+| `llm_verify_relevance.py` | LLM verify | `run(limit=None)` |
 | `preprocess.py` | preprocess | `run(limit=None)` |
 | `ingest_reddit.py` | (one-time) | `ingest(path, source)` |
 
@@ -67,10 +73,10 @@ results rather than raising.
 `def insert_articles(articles: list[dict]) -> tuple[int, int]`
 
 **Arguments:**
-`articles` — output of `fetch_all()`
+- `articles` — output of `fetch_all()`
 
 **Returns:** `(inserted_count, skipped_count)`. Rows whose URL
-already exists are counted as skipped.
+already exist are counted as skipped.
 
 **Side effects:** Writes to `articles` table using
 `upsert(on_conflict="url", ignore_duplicates=True)`.
@@ -97,7 +103,27 @@ already exists are counted as skipped.
 
 **Idempotent:** Yes.
 
-### 4.4 `preprocess.run(limit=None)`
+### 4.4 `llm_verify_relevance.run(limit=None)`
+**Signature:**
+`def run(limit: int | None = None) -> dict`
+
+**Arguments:**
+- `limit` — max articles to verify, or `None` for all pending
+
+**Returns:**
+`{"verified": int, "kept": int, "dropped": int, "failed": int}`
+
+**Side effects:** Updates `articles.llm_relevant`, `articles.llm_relevance_reason`, `articles.llm_verified_at`.
+
+**Behavior:** For each article where `is_relevant = TRUE` and `llm_relevant IS NULL`, sends title + first 2,000 chars of content to GPT-5.6-Luna. Model returns a strict binary verdict with one-sentence justification. Result is stored as `llm_relevant`.
+
+**Preconditions:** Rows exist with `is_relevant = TRUE` AND `llm_relevant IS NULL`.
+
+**Postconditions:** Those rows have `llm_relevant` set to `TRUE` or `FALSE`, with reason and timestamp.
+
+**Idempotent:** Yes.
+
+### 4.5 `preprocess.run(limit=None)`
 **Signature:**
 `def run(limit: int | None = None) -> dict`
 
@@ -110,7 +136,7 @@ already exists are counted as skipped.
 **Side effects:** Updates `articles.clean_content`,
 `processing_status`, `processing_note`, `processed_at`.
 
-**Preconditions:** Rows exist with `is_relevant = true` AND
+**Preconditions:** Rows exist with `llm_relevant = TRUE` AND
 `processing_status = 'pending'`.
 
 **Postconditions:** Those rows have `processing_status` in
@@ -150,6 +176,9 @@ Not part of the runtime pipeline. One-time import only.
 | content | text | raw summary/truncated |
 | content_hash | text | informational only |
 | is_relevant | boolean | NULL until filter runs |
+| llm_relevant | boolean | LLM filter verdict (final gate |
+| llm_relevance_reason | text | LLM justification |
+| llm_verified_at | timestampz | |
 | clean_content | text | NULL until preprocess succeeds |
 | processing_status | text | 'pending' / 'success' / 'failed' / 'paywalled' |
 | processing_note | text | failure reason |
@@ -158,9 +187,11 @@ Not part of the runtime pipeline. One-time import only.
 
 **Row state flow:**
 ```
-INSERT → is_relevant=NULL, processing_status='pending'
-filter runs → is_relevant=TRUE/FALSE
-preprocess runs → processing_status='success'/'failed'/'paywalled'
+INSERT          → is_relevant=NULL, llm_relevant=NULL, processing_status='pending'
+keyword filter  → is_relevant=TRUE/FALSE
+LLM verify      → llm_relevant=TRUE/FALSE (only on keyword=TRUE rows)
+preprocess      → processing_status in {success, failed, paywalled}
+                  (only on llm_relevant=TRUE rows)
 ```
 
 ## 6. Reddit tables
@@ -173,10 +204,11 @@ stance agent as a parallel public-discourse corpus.
 
 ## 7. Preconditions and pipeline ordering
 
-1. `fetch_all()`              → produces article dicts (no DB writes)
-2. `insert_articles(...)`     → articles rows exist with `is_relevant=NULL`
-3. `filter_relevance.run()`   → `is_relevant` set to `TRUE`/`FALSE`
-4. `preprocess.run()`         → `processing_status` set for relevant rows
+1. `fetch_all()`                → produces article dicts (no DB writes)
+2. `insert_articles(...)`       → articles rows exist with `is_relevant=NULL`
+3. `filter_relevance.run()`     → `is_relevant` set to `TRUE`/`FALSE`
+4. `llm_verify_relevance.run()` → `llm_relevant` set (on `is_relevant=TRUE`)
+5. `preprocess.run()`           → `processing_status` set (on `llm_relevant=TRUE`)
 
 Stages are idempotent and self-filtering, so calling them out of
 order is safe but produces no work.
@@ -189,6 +221,9 @@ coordination:
 to stdout. Signatures above show the recommended return shape.
 2. **Structured logging.** Progress lines go to stdout via
 `print()`. The Orchestrator may want a structured logger.
+3. **Two-stage filter.** If the Orchestrator runs the whole pipeline
+on a schedule, stages 3 and 4 should complete before stage 5
+starts. Both must succeed for preprocessing to have input.
 
 ## 9. Known limitations
 - Paywall handling — 403 responses mark the row paywalled
@@ -197,14 +232,19 @@ without retry. New outlets may need per-domain handling.
 lists that may lose precision on new sources.
 - No automated scheduling (F.2) — collection runs on manual
 invocation. Handed off to the Orchestrator per WBS 8.3.
-- Domain rate limits — preprocess sleeps 1s between fetches;
-running it in parallel across the same outlet may trigger blocks.
+- Prompt injection surface — llm_verify_relevance passes raw
+article text to the LLM. Current mitigation: 2,000-char truncation
+and a JSON-only system message. Full sanitization owned by the
+Security Subsystem (Section 2.9).
+- Non-article content — podcast pages and video-only posts
+occasionally pass both filters. Detected during preprocessing as
+short body text.
 
-## 10. Current state (as of Sept 28, 2026)
-- Articles fetched: 745
-- Articles stored (post-dedup): 709
-- Marked relevant: 279
-- Preprocessed successfully: 248
+## 10. Current state (as of Oct 3, 2026)
+- Articles stored (post-dedup): 1,814
+- Keyword filter passed: 384
+- LLM verified relevant: 296
+- Preprocessed successfully: 374 (including false positives)
 - Reddit posts: 2,820
 - Reddit comments: 39,597
 

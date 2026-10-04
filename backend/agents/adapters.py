@@ -4,8 +4,8 @@ The team's agents, wrapped in the coordinator's Agent contract.
 Each class is a thin shell over a teammate's module: it translates the
 RunContext into that module's arguments, and the module's result into
 the summary dict the coordinator expects. The real work stays in
-collection/, security/ and classification/, so an owner can keep
-editing their own code without touching orchestrator code.
+collection/, security/, classification/ and topic/, so an owner can
+keep editing their own code without touching orchestrator code.
 
 Two rules from the contract are worth repeating here, because the
 standalone scripts break both by design:
@@ -21,11 +21,11 @@ Which stages are real (see docs/pipeline-coordinator.md):
   collection      real - CollectionAgent
   security        real - SecurityAgent
   classification  real - ClassificationAgent ('baseline' or 'luna')
-  sentiment       stub - no implementation on any branch yet
+  topic           real - TopicAgent, where BERTopic and a saved model are
+                  installed; a stub elsewhere
+  sentiment       stub - agents/sentiment/ is a standalone script, not
+                  wired in yet
   stance          stub - no implementation on any branch yet
-  topic           stub - agents/topic/topic_model.py works standalone,
-                  but needs ~2GB of ML libraries, so it is deliberately
-                  not wired in
   aggregation     stub - no implementation yet
 """
 from __future__ import annotations
@@ -37,6 +37,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from orchestrator.agents import Agent
 from orchestrator.models import RunContext
 
+from .config import optional_key
 from .supabase_client import get_client
 
 logger = logging.getLogger(__name__)
@@ -67,14 +68,20 @@ def _select_by_id(table: str, columns: str, ids: Sequence[int]) -> List[Dict[str
 # ---------------------------------------------------------------------
 class CollectionAgent(Agent):
     """
-    Fetch -> store -> relevance filter -> preprocess, then report the IDs.
+    Fetch -> store -> keyword filter -> LLM relevance check -> preprocess,
+    then report the IDs.
 
     Returns the articles stored this run that analysis can actually use:
-    marked relevant and preprocessed successfully. An article that was
-    stored but turned out to be irrelevant, or whose page could not be
-    downloaded, has no `clean_content`, and every analysis agent reads
-    `clean_content` — passing its ID on would just produce four failures
-    further down the pipeline.
+    confirmed relevant by the LLM and preprocessed successfully. An
+    article that was stored but turned out to be irrelevant, or whose
+    page could not be downloaded, has no `clean_content`, and every
+    analysis agent reads `clean_content` — passing its ID on would just
+    produce four failures further down the pipeline.
+
+    The keyword filter is only a recall pass. The LLM check sets
+    llm_relevant, and preprocess downloads nothing else, so without
+    TRUSSED_API_KEY and TRUSSED_BASE_URL no article can come out of a
+    run. The stage fails up front instead of spending API quota first.
 
     sources           which fetchers to use; None means all of them
     preprocess_limit  cap on pages downloaded per run (each costs ~1s)
@@ -103,7 +110,12 @@ class CollectionAgent(Agent):
         if self.backlog:
             return self._from_backlog()
 
-        from .collection import db, fetchers, filter_relevance, preprocess
+        from .collection import db, fetchers, filter_relevance, llm_verify_relevance, preprocess
+
+        if not (optional_key("TRUSSED_API_KEY") and optional_key("TRUSSED_BASE_URL")):
+            raise RuntimeError(
+                "Collection's relevance check needs TRUSSED_API_KEY and TRUSSED_BASE_URL in backend/.env"
+            )
 
         fetched = fetchers.fetch_all(self.sources)
         logger.info("Run %s: collection fetched %d article(s)", ctx.run_id, len(fetched))
@@ -117,6 +129,14 @@ class CollectionAgent(Agent):
             return {"article_ids": [], "fetched": len(fetched), "stored": 0, "duplicates": skipped}
 
         relevance = filter_relevance.run(article_ids=stored_ids)
+        verified = llm_verify_relevance.run(article_ids=stored_ids)
+        # Every call failing is an outage or a bad key, not a verdict, and
+        # leaves nothing for preprocess. Raise rather than report a run
+        # that found nothing, as the LLM classifier does.
+        if verified["checked"] and verified["failed"] == verified["checked"]:
+            raise RuntimeError(
+                f"The LLM relevance check failed on all {verified['checked']} article(s)"
+            )
         processing = preprocess.run(limit=self.preprocess_limit, article_ids=stored_ids)
 
         usable = self._analysis_ready(stored_ids)
@@ -126,11 +146,12 @@ class CollectionAgent(Agent):
             "stored": len(stored_ids),
             "duplicates": skipped,
             "relevant": relevance["relevant"],
+            "llm_relevant": verified["kept"],
             "preprocessed": processing["success"],
         }
 
     def _analysis_ready(self, ids: Sequence[int]) -> List[int]:
-        """Of `ids`, the ones marked relevant and preprocessed successfully."""
+        """Of `ids`, the ones the LLM confirmed and preprocess succeeded on."""
         rows = []
         client = get_client()
         for batch in _chunks(list(ids)):
@@ -138,7 +159,7 @@ class CollectionAgent(Agent):
                 client.table("articles")
                 .select("id")
                 .in_("id", list(batch))
-                .eq("is_relevant", True)
+                .eq("llm_relevant", True)
                 .eq("processing_status", "success")
                 .execute()
             )
@@ -150,7 +171,7 @@ class CollectionAgent(Agent):
             get_client()
             .table("articles")
             .select("id")
-            .eq("is_relevant", True)
+            .eq("llm_relevant", True)
             .eq("processing_status", "success")
             .order("id")
             .limit(self.backlog_limit)
@@ -173,15 +194,17 @@ class SecurityAgent(Agent):
     is left out of approved_ids, so no analysis agent is given it.
 
     max_length raises the filter's cap for article bodies. The filter's
-    own default is 5000 characters, which suits the user comments it was
-    first written for; 68% of the articles in the corpus are longer than
-    that, so the default would quarantine most of them for length alone.
+    own default is 50,000 characters, and the longest article in the
+    corpus is twice that, so the default would quarantine the longest
+    articles for length alone.
 
     TWO THINGS THIS DOES NOT DO, both deliberate:
 
-      * It does not persist the quarantine decision. There is no table
-        for it, and adding one is a schema change for the team rather
-        than something to slip in here. Decisions are logged at WARNING
+      * It does not persist the quarantine decision. The security
+        owners' agents/security/quarantine.py writes rejections to
+        quarantined_content, but over a direct Postgres connection
+        that the pipeline does not have, and that table was created
+        outside this repo's migrations. Decisions are logged at WARNING
         and counted by reason in the returned summary, which is enough
         to see what a run rejected and why, but they are not queryable
         after the fact. See docs/pipeline-coordinator.md.
@@ -191,9 +214,9 @@ class SecurityAgent(Agent):
         from the database, so they still see the unredacted article.
         Screening currently decides pass/quarantine only.
 
-    The filter scores 29/45 against its own adversarial suite
-    (agents/security/adversarial_test_set.py). It is wired in as-is; the
-    gap is the security owner's to close, and is recorded in the docs.
+    The filter scores 44/45 against its own adversarial suite
+    (agents/security/adversarial_test_set.py). The miss is a full name,
+    which a pattern cannot catch; the filter's own docs say it needs NER.
     """
 
     name = "security"
@@ -256,12 +279,12 @@ class SecurityAgent(Agent):
 
     def _screen(self, text_filter: Any, text: str) -> Any:
         """Run the filter with the article-sized length cap."""
-        original = text_filter.MAX_COMMENT_LENGTH
-        text_filter.MAX_COMMENT_LENGTH = self.max_length
+        original = text_filter.MAX_TEXT_LENGTH
+        text_filter.MAX_TEXT_LENGTH = self.max_length
         try:
-            return text_filter.sanitize_comment(text)
+            return text_filter.sanitize_text(text)
         finally:
-            text_filter.MAX_COMMENT_LENGTH = original
+            text_filter.MAX_TEXT_LENGTH = original
 
 
 # ---------------------------------------------------------------------
@@ -388,3 +411,30 @@ class ClassificationAgent(Agent):
                 list(batch), on_conflict="article_id,classifier"
             ).execute()
         return len(records)
+
+
+# ---------------------------------------------------------------------
+# Topic
+# ---------------------------------------------------------------------
+class TopicAgent(Agent):
+    """
+    A topic for each approved article, from the saved BERTopic model.
+
+    agents/topic/topic_model.py has its own TopicAgent that already
+    follows the agent contract; this shell only defers importing it.
+    That module loads BERTopic and its ML stack, and building the
+    registry must not need any of it.
+
+    The registry only uses it where BERTopic is installed and a saved
+    model has been restored; the file is gitignored (see
+    agents/topic/TOPIC_IDENTITY.md). A file whose checksum is not
+    registered in topic_catalog.json still fails the stage: it never
+    trains a replacement.
+    """
+
+    name = "topic"
+
+    def run(self, ctx: RunContext) -> Dict[str, Any]:
+        from .topic import topic_model
+
+        return topic_model.TopicAgent().run(ctx)

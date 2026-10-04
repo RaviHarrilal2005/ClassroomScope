@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "topics": {
+    "T001": {
+      "label": "AI adoption and its effects on learning"
+    },
+    "T002": {
+      "label": "School AI restrictions, privacy, and policy"
+    },
+    "T003": {
+      "label": "Classroom AI implementation and teacher practice"
+    },
+    "T004": {
+      "label": "Academic integrity, cheating, and AI detection"
+    },
+    "T005": {
+      "label": "AI literacy and educational resources"
+    }
+  },
+  "models": {
+    "provisional_topic_model_v2.pkl": {
+      "version": "provisional-v2",
+      "sha256": "679406f32ccf370459691c43f4337331f909aa79d0dee5152ce7bf61ec84e1b0",
+      "topic_mapping": {
+        "0": "T001",
+        "1": "T002",
+        "2": "T003",
+        "3": "T004",
+        "4": "T005"
+      },
+      "labels": {
+        "-1": "Unassigned",
+        "0": "AI adoption and its effects on learning",
+        "1": "School AI restrictions, privacy, and policy",
+        "2": "Classroom AI implementation and teacher practice",
+        "3": "Academic integrity, cheating, and AI detection",
+        "4": "AI literacy and educational resources"
+      }
+    }
+  }
+}

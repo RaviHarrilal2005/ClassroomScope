@@ -92,7 +92,7 @@ def run(limit=None, article_ids=None):
     query = (
         get_client().table("articles")
         .select("id, url")
-        .eq("is_relevant", True)
+        .eq("llm_relevant", True)
         .eq("processing_status", "pending")
     )
     if article_ids is not None:

@@ -1,118 +1,219 @@
 #Libraries
 import os
+import hashlib
+import json
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from pathlib import Path
-from dotenv import load_dotenv
-from supabase import create_client
 
 import pandas as pd
-from sentence_transformers import SentenceTransformer
 from bertopic import BERTopic
-from sklearn.feature_extraction.text import CountVectorizer, ENGLISH_STOP_WORDS
-from umap import UMAP
+
+TOPIC_RESULT_COLUMNS = [
+    "article_id", "topic_id", "topic", "topic_keywords", "stable_topic_id", "model_version"
+]
+DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "provisional_topic_model_v2.pkl"
+TOPIC_CATALOG_PATH = Path(__file__).resolve().parent / "topic_catalog.json"
+
+def get_model_registration(model_path):
+    """Require an exact registered model; never silently train a replacement."""
+    if not model_path.is_file():
+        raise ValueError("Saved topic model is missing. Restore it before running analysis.")
+    catalog = json.loads(TOPIC_CATALOG_PATH.read_text())
+    registration = catalog["models"].get(model_path.name)
+    if registration is None:
+        raise ValueError("Saved model is not registered in topic_catalog.json.")
+    with model_path.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    if digest != registration["sha256"]:
+        raise ValueError("Saved model has changed. Register a reviewed new version before using it.")
+    mapping = registration["topic_mapping"]
+    if len(set(mapping.values())) != len(mapping) or not set(mapping.values()) <= set(catalog["topics"]):
+        raise ValueError("Invalid stable topic mapping in topic_catalog.json.")
+    return registration
 
 def get_database():
     # The shared client resolves backend/.env and the SUPABASE_KEY /
-    # SUPABASE_ANON_KEY naming in one place. The hand-rolled path here
-    # pointed at <repo>/backend/.env from the old top-level folder and
-    # broke when this module moved under backend/agents/.
+    # SUPABASE_ANON_KEY naming in one place. A path built from this
+    # file's location breaks whenever the module moves, as it did when
+    # it moved under backend/agents/.
     from ..supabase_client import get_client
 
     return get_client()
 
 def save_topic_results(results):
+    """Insert new article assignments and preserve historical results."""
     if results.empty:
-        return
+        return 0
+    records = results.astype(object).where(results.notna(), None).to_dict(orient="records")
+    json.dumps(records, allow_nan=False)
+    database = get_database()
+    response = database.table("topic_results").upsert(
+        records, on_conflict="article_id", ignore_duplicates=True, returning="representation"
+    ).execute()
+    return len(response.data)
+
+def load_articles(article_ids=None, page_size=500):
+    if not isinstance(page_size, int) or isinstance(page_size, bool) or page_size < 1:
+        raise ValueError("page_size must be a positive integer")
+
+    if article_ids is not None and not article_ids:
+        return pd.DataFrame()
 
     database = get_database()
-    records = results.to_dict(orient="records")
-    database.table("topic_results").upsert(records, on_conflict="article_id").execute()
+    records = []
+    offset = 0
 
-def load_articles():
-    database = get_database()
-    response = (
-        database.table("articles")
-        .select("id, content_hash, clean_content, is_relevant, processing_status")
-        .eq("is_relevant", True)
-        .eq("processing_status", "success")
-        .order("id")
-        .execute()
-    )
-    return pd.DataFrame(response.data)
+    while True:
+        query = (
+            database.table("articles")
+            .select("id, content_hash, clean_content, is_relevant, llm_relevant, processing_status")
+            .eq("is_relevant", True)
+            .eq("llm_relevant", True)
+            .eq("processing_status", "success")
+            .order("id")
+        )
+        if article_ids is not None:
+            query = query.in_("id", article_ids)
 
+        response = query.range(offset, offset + page_size - 1).execute()
+        page = response.data
+        if not page:
+            break
+        records.extend(page)
+        # Advance by the actual count if the server caps pages below page_size.
+        offset += len(page)
 
-def analyze_topics(articles):
+    return pd.DataFrame(records)
 
+def analyze_topics(articles, topic_count=None, model_path=None):
+    """Assign articles with a saved model. topic_count is retained for caller compatibility.
+
+    Topic count is chosen during deliberate training, never during inference.
+    """
     if articles.empty:
-        print("No eligible articles to analyze.")
-        return pd.DataFrame(columns=["article_id", "topic"])
-
-    # Your existing deduplication and filtering continue here.
-    #Loads CSV file of articles
-    articles = articles.drop_duplicates(subset="content_hash").reset_index(drop=True)
-    articles = articles[(articles["is_relevant"] == True) & (articles["processing_status"] == "success") & articles["clean_content"].fillna("").str.strip().ne("")].copy()
-    articles = articles.reset_index(drop = True)
-
+        return pd.DataFrame(columns=TOPIC_RESULT_COLUMNS)
+    articles = articles[
+        (articles["is_relevant"] == True)
+        & (articles["llm_relevant"] == True)
+        & (articles["processing_status"] == "success")
+        & articles["clean_content"].fillna("").str.strip().ne("")
+    ].copy()
+    # Only hashes that are present establish duplicate identity.
+    hashes = articles["content_hash"]
+    duplicate = hashes.notna() & hashes.ne("") & hashes.duplicated()
+    articles = articles[~duplicate].reset_index(drop=True)
     if articles.empty:
-        print("No eligible articles to analyze.")
-        return pd.DataFrame(columns=["article_id", "topic"])
+        return pd.DataFrame(columns=TOPIC_RESULT_COLUMNS)
 
-    article_content = articles["clean_content"].tolist()
-
-    def build_topic_model(min_topic_size: int = 10):
-        #Model to filter out stop words
-        domain_stop_words = {
-        "ai", "artificial", "intelligence", "education", "educational",
-        "student", "students", "school", "schools", "teacher", "teachers",
-        "said", "says", "say", "new", "use", "used", "using",
-        "educators", "tools", "tool", "help", "systems", "generated",
-        "technology", "information", "districts", "district", "automated", "support", "12"
-        }
-
-        vectorizer_model = CountVectorizer(stop_words=list(ENGLISH_STOP_WORDS | domain_stop_words), ngram_range=(1, 1), min_df=1, max_df=0.9)
-
-        umap_model = UMAP(n_neighbors=8, n_components=5, min_dist=0.0, metric="cosine", random_state=42)
-
-        embedding_model = SentenceTransformer("all-mpnet-base-v2")
-
-        topic_model = BERTopic(embedding_model=embedding_model, vectorizer_model=vectorizer_model, umap_model=umap_model, min_topic_size=min_topic_size, nr_topics=None)
-
-        return topic_model, embedding_model
-
-    def build_topic_results(articles):
-        return articles[["id", "topic_label"]].rename(
-        columns={
-            "id": "article_id",
-            "topic_label": "topic",
-        }
-    ).copy()
-
-    topic_model, embedding_model = build_topic_model()
-
-    embeddings = embedding_model.encode(article_content)
-
-    #Find topics
-    topics, probabilities = topic_model.fit_transform(article_content, embeddings)
-
+    model_path = Path(model_path) if model_path is not None else DEFAULT_MODEL_PATH
+    registration = get_model_registration(model_path)
+    topic_model = BERTopic.load(str(model_path))
     topic_info = topic_model.get_topic_info().set_index("Topic")
+    known_topics = {str(topic) for topic in topic_info.index if topic != -1}
+    if known_topics != set(registration["topic_mapping"]):
+        raise ValueError("Saved model topics do not match the registered topic mapping.")
+    topics, _ = topic_model.transform(articles["clean_content"].tolist())
+    labels = registration["labels"]
+    results = pd.DataFrame({
+        "article_id": articles["id"].tolist(),
+        "topic_id": topics,
+        "topic": ["Unassigned" if topic == -1 else labels[str(topic)] for topic in topics],
+        "topic_keywords": [
+            "" if topic == -1 else "; ".join(word for word, _ in (topic_model.get_topic(topic) or []))
+            for topic in topics
+        ],
+        "stable_topic_id": [
+            None if topic == -1 else registration["topic_mapping"][str(topic)] for topic in topics
+        ],
+        "model_version": registration["version"],
+    }, columns=TOPIC_RESULT_COLUMNS)
+    print(f"Reused saved topic model: {model_path.name} ({registration['version']})")
+    return results
 
-    if -1 in topic_info.index:
-        topic_info.loc[-1, "Name"] = "Unassigned"
+def run_topic_agent(articles, topic_count=None):
+    try:
+        results = analyze_topics(articles, topic_count)
 
-    articles["topic_id"] = topics
-    articles["topic_label"] = articles["topic_id"].map(topic_info["Name"])
+        return {
+            "agent": "topic",
+            "status": "success" if not results.empty else "skipped",
+            "results": results,
+            "error": None,
+        }
 
-    topic_results = build_topic_results(articles)
+    except Exception as exc:
+        return {
+            "agent": "topic",
+            "status": "failed",
+            "results": pd.DataFrame(columns=TOPIC_RESULT_COLUMNS),
+            "error": {
+                "type": type(exc).__name__,
+                "message": str(exc),
+            },
+        }
 
-    return topic_results
+class TopicAgent:
+    name = "topic"
+
+    def __init__(self, topic_count=6):
+        self.topic_count = topic_count
+
+    def run(self, ctx):
+        articles = load_articles(ctx.approved_ids)
+
+        if articles.empty:
+            return {
+                "processed": 0,
+                "article_ids": [],
+            }
+
+        results = analyze_topics(articles, topic_count=self.topic_count)
+        inserted = save_topic_results(results)
+
+        return {
+            "processed": len(results),
+            "inserted": inserted,
+            "preserved": len(results) - inserted,
+            "article_ids": results["article_id"].tolist(),
+        }
 
 if __name__ == "__main__":
-    articles = load_articles()
-    print(f"Loaded {len(articles)} articles from Supabase.")
+    try:
+        articles = load_articles()
+        print(f"Loaded {len(articles)} articles from Supabase.")
+    except Exception as exc:
+        print(
+            f"Database load failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        raise SystemExit(2)
 
-    results = analyze_topics(articles)
-    save_topic_results(results)
-    print(f"Saved {len(results)} topic results to Supabase.")
+    outcome = run_topic_agent(articles, topic_count=6)
+
+    if outcome["status"] == "failed":
+        error = outcome["error"]
+        print(
+            f"Topic analysis failed: "
+            f"{error['type']}: {error['message']}"
+        )
+        raise SystemExit(1)
+
+    if outcome["status"] == "skipped":
+        print("Topic analysis skipped: no eligible articles.")
+        raise SystemExit(0)
+
+    try:
+        inserted = save_topic_results(outcome["results"])
+        print(
+            f"Analyzed {len(outcome['results'])} articles. Inserted {inserted} new results; "
+            f"preserved {len(outcome['results']) - inserted} existing assignments."
+        )
+    except Exception as exc:
+        print(
+            f"Database save failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        raise SystemExit(3)
