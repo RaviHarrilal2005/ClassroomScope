@@ -21,7 +21,8 @@ Which stages are real (see docs/pipeline-coordinator.md):
   collection      real - CollectionAgent
   security        real - SecurityAgent
   classification  real - ClassificationAgent ('baseline' or 'luna')
-  topic           real - TopicAgent (needs the saved model file)
+  topic           real - TopicAgent, where BERTopic and a saved model are
+                  installed; a stub elsewhere
   sentiment       stub - agents/sentiment/ is a standalone script, not
                   wired in yet
   stance          stub - no implementation on any branch yet
@@ -424,10 +425,11 @@ class TopicAgent(Agent):
     That module loads BERTopic and its ML stack, and building the
     registry must not need any of it.
 
-    The stage needs the saved model file, which is gitignored (see
-    agents/topic/TOPIC_IDENTITY.md). Without it, or with a file whose
-    checksum is not registered in topic_catalog.json, the stage fails;
-    it never trains a replacement.
+    The registry only uses it where BERTopic is installed and a saved
+    model has been restored; the file is gitignored (see
+    agents/topic/TOPIC_IDENTITY.md). A file whose checksum is not
+    registered in topic_catalog.json still fails the stage: it never
+    trains a replacement.
     """
 
     name = "topic"

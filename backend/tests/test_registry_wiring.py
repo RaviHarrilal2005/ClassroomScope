@@ -6,13 +6,14 @@ of thing that silently goes wrong: a placeholder key that reads as
 'configured', or a test suite that behaves differently on the one
 machine that happens to have a .env.
 """
+import importlib.util
 import os
 import subprocess
 import sys
 
 import pytest
 
-from agents.adapters import ClassificationAgent, CollectionAgent
+from agents.adapters import ClassificationAgent, CollectionAgent, TopicAgent
 from orchestrator.agents import StubAgent
 from orchestrator.registry import _luna_configured, build_default_registry
 from orchestrator.stages import (
@@ -26,7 +27,7 @@ from orchestrator.stages import (
     TOPIC,
 )
 
-REAL_STAGES = (COLLECTION, SECURITY, CLASSIFICATION, TOPIC)
+REAL_STAGES = (COLLECTION, SECURITY, CLASSIFICATION)
 STILL_STUBBED = (SENTIMENT, STANCE, AGGREGATION)
 
 
@@ -71,6 +72,42 @@ def test_building_the_live_registry_does_not_load_the_topic_model():
     )
     backend = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     subprocess.run([sys.executable, "-c", check], cwd=backend, check=True)
+
+
+# --- topic: real only where it can run ---------------------------------
+@pytest.fixture
+def topic_models(monkeypatch, tmp_path):
+    """An empty saved-models folder, standing in for agents/topic/models/."""
+    monkeypatch.setattr("orchestrator.registry.TOPIC_MODELS", tmp_path)
+    return tmp_path
+
+
+def bertopic_installed(monkeypatch, installed):
+    """Make BERTopic look installed or not, whatever this machine has."""
+    real = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name, package=None: (
+        (object() if installed else None) if name == "bertopic" else real(name, package)))
+
+
+def test_topic_stays_stubbed_where_no_model_has_been_restored(monkeypatch, topic_models):
+    """
+    The model file is gitignored and restored by hand. Without it the
+    stage fails on every run, and every run ends completed_with_errors.
+    """
+    bertopic_installed(monkeypatch, True)
+    assert isinstance(build_default_registry(live=True).get(TOPIC), StubAgent)
+
+
+def test_topic_stays_stubbed_where_bertopic_is_not_installed(monkeypatch, topic_models):
+    bertopic_installed(monkeypatch, False)
+    (topic_models / "provisional_topic_model_v2.pkl").write_bytes(b"saved model")
+    assert isinstance(build_default_registry(live=True).get(TOPIC), StubAgent)
+
+
+def test_topic_runs_where_bertopic_and_a_saved_model_are_present(monkeypatch, topic_models):
+    bertopic_installed(monkeypatch, True)
+    (topic_models / "provisional_topic_model_v2.pkl").write_bytes(b"saved model")
+    assert isinstance(build_default_registry(live=True).get(TOPIC), TopicAgent)
 
 
 def test_sentiment_keeps_its_fallback():

@@ -1,7 +1,7 @@
 # Pipeline Coordinator (SS-4)
 
 **Status: running end to end, verified against the live database.**
-The sequencing and failure handling are built and tested (95 tests).
+The sequencing and failure handling are built and tested (98 tests).
 Collection, security, classification and topic are the team's real
 agents; sentiment, stance and aggregation are still stubs — see
 [Which agents are real](#which-agents-are-real). The topic stage and
@@ -74,7 +74,7 @@ backend/
     classification/         stakeholder and source-type classifiers
     topic/                  saved BERTopic model + its offline tests
     sentiment/              RoBERTa + VADER sentiment — standalone, stage still stubbed
-  tests/                    92 tests (more get added as features land)
+  tests/                    95 tests (more get added as features land)
   .env                      credentials — gitignored, never commit
 docs/
   pipeline_tables.sql       the originally proposed SQL; see the note in its header
@@ -97,7 +97,7 @@ package without touching sequencing code.
 | Classification | **real** | `agents/classification/` — LLM classifier when `TRUSSED_API_KEY` is set, keyword scorer otherwise or as its fallback |
 | Sentiment | stub | `agents/sentiment/sentiment_agent.py` runs standalone over a CSV export — see below |
 | Stance | stub | no implementation on any branch yet |
-| Topic | **real** | `agents/topic/` — topics from a saved BERTopic model, whose file is restored by hand — see below |
+| Topic | **real** where its model is | `agents/topic/` — topics from a saved BERTopic model, whose file is restored by hand; a stub on machines without it — see below |
 | Aggregation | stub | not written yet |
 
 `build_default_registry(live=...)` chooses. `live=None` (the default)
@@ -188,9 +188,11 @@ assignments are kept, not overwritten. See
 `agents/topic/TOPIC_IDENTITY.md`.
 
 **The model file is not in the repo.** It is gitignored
-(`backend/agents/topic/models/`) and restored by hand. On a machine
-without it the topic stage fails, and a run finishes
-`completed_with_errors` with the other analysis stages unaffected.
+(`backend/agents/topic/models/`) and restored by hand. The registry uses
+the topic agent only where BERTopic is installed and a model file is in
+that folder; anywhere else topic stays a stub, as before, rather than
+fail every run. Restoring the file switches it on at the next start. A
+file whose checksum is not registered still fails the stage loudly.
 
 BERTopic and its stack (~2GB with torch) are in `requirements.txt`. The
 adapter imports the module only inside `run()`, so building the
@@ -253,7 +255,7 @@ Starting a run while another is active returns `409` with the active run's ID.
 
 ## Testing plan
 
-95 tests, none of which touch the network: stage order, the four
+98 tests, none of which touch the network: stage order, the four
 analysis agents running at the same time, each failure rule, the API,
 the Supabase store against a fake client, and the adapters against fake
 agent modules. The suite passes `live=False`, so it behaves the same
@@ -466,7 +468,8 @@ fails if the deployed schema and the code drift apart.
   that is not wired in; stance and aggregation have no implementation.
   See [Which agents are real](#which-agents-are-real).
 - **The topic stage only runs where its model file has been restored.**
-  Everywhere else it fails, and runs finish `completed_with_errors`.
+  Everywhere else it is a stub, so `topic_results` only grows from runs
+  on a machine that has the file.
 - **The security filter's quarantine decisions are not stored anywhere
   queryable** by the pipeline, and the filter misses full names (1 of
   45 adversarial cases).

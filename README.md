@@ -48,7 +48,8 @@ keeps the results of stages that succeeded when another fails.
   dedupe, keyword then LLM relevance check, body extraction), security
   (content sanitization screening), classification (stakeholder and
   source type) and topic (a saved BERTopic model, whose file is restored
-  by hand). Sentiment exists as a standalone script that is not wired in
+  by hand; where it is missing, topic stays a stub). Sentiment exists as
+  a standalone script that is not wired in
   yet; stance and aggregation have no implementation. Each owner's code
   lives in `backend/agents/<stage>/`.
 - The registry picks real agents when Supabase is configured and stubs
@@ -99,7 +100,7 @@ python run_pipeline.py                   # run once with stubs, print each stage
 python run_pipeline.py --fail topic      # see how a failing agent is handled
 python run_pipeline.py --live --backlog  # the real agents, over articles already
                                          # stored (no API quota, no downloads)
-python -m pytest tests agents/topic      # run the test suite (95 tests)
+python -m pytest tests agents/topic      # run the test suite (98 tests)
 python -m pyright backend/               # type check (from the repo root)
 ```
 
