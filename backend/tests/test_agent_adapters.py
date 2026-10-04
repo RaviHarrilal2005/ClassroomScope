@@ -82,9 +82,16 @@ def fake_client(monkeypatch):
     return install
 
 
+@pytest.fixture
+def llm_keys(monkeypatch):
+    """Credentials for collection's LLM relevance check, which it needs to start."""
+    monkeypatch.setenv("TRUSSED_API_KEY", "sk-a-real-looking-key")
+    monkeypatch.setenv("TRUSSED_BASE_URL", "https://trussed.example/chat/completions")
+
+
 def article(id, title="A school adopts AI", content="Teachers discuss the policy.", url="https://edsurge.com/a"):
     return {"id": id, "title": title, "clean_content": content, "url": url,
-            "is_relevant": True, "processing_status": "success"}
+            "is_relevant": True, "llm_relevant": True, "processing_status": "success"}
 
 
 # --- CollectionAgent ---------------------------------------------------
@@ -99,7 +106,7 @@ def test_backlog_mode_returns_already_stored_articles(fake_client):
 
 def test_backlog_mode_skips_articles_analysis_cannot_use(fake_client):
     unusable = dict(article(2), processing_status="failed", clean_content=None)
-    irrelevant = dict(article(3), is_relevant=False)
+    irrelevant = dict(article(3), llm_relevant=False)   # passed the keywords, not the LLM
     fake_client(articles=[article(1), unusable, irrelevant])
 
     assert CollectionAgent(backlog=True).run(RunContext(run_id=1))["article_ids"] == [1]
@@ -110,23 +117,25 @@ def test_backlog_mode_respects_its_limit(fake_client):
     assert len(CollectionAgent(backlog=True, backlog_limit=4).run(RunContext(run_id=1))["article_ids"]) == 4
 
 
-def test_collection_reports_only_the_articles_analysis_can_use(monkeypatch, fake_client):
+def test_collection_reports_only_the_articles_analysis_can_use(monkeypatch, fake_client, llm_keys):
     """
     Stored 3, but one is irrelevant and one failed to download. Only the
     usable ID is passed on: the others have no clean_content, so handing
     them to the analysis stages would just produce four failures each.
     """
-    from agents.collection import db, fetchers, filter_relevance, preprocess
+    from agents.collection import db, fetchers, filter_relevance, llm_verify_relevance, preprocess
 
     fake_client(articles=[
         article(1),
-        dict(article(2), is_relevant=False),
+        dict(article(2), llm_relevant=False),
         dict(article(3), processing_status="failed"),
     ])
     monkeypatch.setattr(fetchers, "fetch_all", lambda sources: [{"url": "https://x/1"}] * 3)
     monkeypatch.setattr(db, "insert_articles_returning_ids", lambda a: ([1, 2, 3], 4))
-    monkeypatch.setattr(filter_relevance, "run", lambda article_ids: {"checked": 3, "relevant": 1, "irrelevant": 2})
-    monkeypatch.setattr(preprocess, "run", lambda limit, article_ids: {"processed": 1, "success": 1, "failed": 1})
+    monkeypatch.setattr(filter_relevance, "run", lambda article_ids: {"checked": 3, "relevant": 3, "irrelevant": 0})
+    monkeypatch.setattr(llm_verify_relevance, "run",
+                        lambda article_ids: {"checked": 3, "kept": 2, "dropped": 1, "failed": 0})
+    monkeypatch.setattr(preprocess, "run", lambda limit, article_ids: {"processed": 2, "success": 1, "failed": 1})
 
     output = CollectionAgent().run(RunContext(run_id=1))
 
@@ -134,15 +143,16 @@ def test_collection_reports_only_the_articles_analysis_can_use(monkeypatch, fake
     assert output["stored"] == 3 and output["duplicates"] == 4
 
 
-def test_collection_stops_early_when_nothing_new_was_stored(monkeypatch, fake_client):
-    """Every article was a duplicate — no point filtering or downloading."""
-    from agents.collection import db, fetchers, filter_relevance, preprocess
+def test_collection_stops_early_when_nothing_new_was_stored(monkeypatch, fake_client, llm_keys):
+    """Every article was a duplicate — no point filtering, asking the LLM or downloading."""
+    from agents.collection import db, fetchers, filter_relevance, llm_verify_relevance, preprocess
 
     fake_client(articles=[])
     monkeypatch.setattr(fetchers, "fetch_all", lambda sources: [{"url": "https://x/1"}])
     monkeypatch.setattr(db, "insert_articles_returning_ids", lambda a: ([], 1))
     called = []
     monkeypatch.setattr(filter_relevance, "run", lambda **kw: called.append("filter"))
+    monkeypatch.setattr(llm_verify_relevance, "run", lambda **kw: called.append("verify"))
     monkeypatch.setattr(preprocess, "run", lambda **kw: called.append("preprocess"))
 
     output = CollectionAgent().run(RunContext(run_id=1))
@@ -151,7 +161,7 @@ def test_collection_stops_early_when_nothing_new_was_stored(monkeypatch, fake_cl
     assert called == []
 
 
-def test_a_failing_fetch_is_raised_not_swallowed(monkeypatch, fake_client):
+def test_a_failing_fetch_is_raised_not_swallowed(monkeypatch, fake_client, llm_keys):
     """
     The coordinator can only retry a stage it sees fail. A collection
     error reported as 'stored nothing' would end the run as completed.
@@ -166,6 +176,38 @@ def test_a_failing_fetch_is_raised_not_swallowed(monkeypatch, fake_client):
 
     monkeypatch.setattr(db, "insert_articles_returning_ids", boom)
     with pytest.raises(ConnectionError):
+        CollectionAgent().run(RunContext(run_id=1))
+
+
+def test_collection_fails_before_fetching_without_the_llm_check(monkeypatch):
+    """
+    Preprocess only downloads what the LLM confirmed, so a run without it
+    cannot produce an article. It must fail before spending API quota.
+    A placeholder copied from .env.example counts as no key.
+    """
+    from agents.collection import fetchers
+
+    monkeypatch.setenv("TRUSSED_API_KEY", "your-trussed-api-key")
+    monkeypatch.setenv("TRUSSED_BASE_URL", "https://trussed.example/chat/completions")
+    monkeypatch.setattr(fetchers, "fetch_all", lambda sources: pytest.fail("fetched with no LLM check"))
+
+    with pytest.raises(RuntimeError, match="TRUSSED_API_KEY"):
+        CollectionAgent().run(RunContext(run_id=1))
+
+
+def test_collection_fails_when_every_llm_check_fails(monkeypatch, fake_client, llm_keys):
+    """An outage or a bad key is a failed stage, not a run that found nothing."""
+    from agents.collection import db, fetchers, filter_relevance, llm_verify_relevance, preprocess
+
+    fake_client(articles=[])
+    monkeypatch.setattr(fetchers, "fetch_all", lambda sources: [{"url": "https://x/1"}] * 2)
+    monkeypatch.setattr(db, "insert_articles_returning_ids", lambda a: ([1, 2], 0))
+    monkeypatch.setattr(filter_relevance, "run", lambda article_ids: {"checked": 2, "relevant": 2, "irrelevant": 0})
+    monkeypatch.setattr(llm_verify_relevance, "run",
+                        lambda article_ids: {"checked": 2, "kept": 0, "dropped": 0, "failed": 2})
+    monkeypatch.setattr(preprocess, "run", lambda **kw: pytest.fail("preprocessed after the LLM check failed"))
+
+    with pytest.raises(RuntimeError, match="failed on all 2"):
         CollectionAgent().run(RunContext(run_id=1))
 
 

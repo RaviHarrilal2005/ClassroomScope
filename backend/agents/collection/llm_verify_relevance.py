@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import requests
 from dotenv import load_dotenv
 
-from db import _supabase
+from ..supabase_client import get_client
 
 load_dotenv()
 
@@ -58,6 +58,8 @@ def call_luna(title, text):
         "max_tokens": 150,
         "reasoning_effort": "none",
     }
+    if not BASE_URL:
+        return None, None, "TRUSSED_BASE_URL is not set"
     try:
         r = requests.post(BASE_URL, headers=headers, json=body, timeout=60)
         r.raise_for_status()
@@ -75,17 +77,26 @@ def call_luna(title, text):
         return None, None, f"parse failed: {e}"
 
 
-def run(limit=None):
+def run(limit=None, article_ids=None):
+    """
+    Verify keyword-relevant rows the LLM has not checked yet.
+
+    article_ids narrows the work to one run's articles. Without it every
+    unverified row is checked, which is right for a manual catch-up but
+    wrong inside a pipeline run: the run would pay for an LLM call per
+    backlog article and record the result as its own.
+    """
     if not API_KEY or not BASE_URL:
-        print("TRUSSED_API_KEY / TRUSSED_BASE_URL missing")
-        return
+        raise RuntimeError("TRUSSED_API_KEY / TRUSSED_BASE_URL missing")
 
     query = (
-        _supabase.table("articles")
+        get_client().table("articles")
         .select("id, title, content")
         .eq("is_relevant", True)
         .is_("llm_relevant", "null")
     )
+    if article_ids is not None:
+        query = query.in_("id", list(article_ids))
     if limit:
         query = query.limit(limit)
     rows = query.execute().data or []
@@ -100,7 +111,7 @@ def run(limit=None):
             time.sleep(0.5)
             continue
 
-        _supabase.table("articles").update({
+        get_client().table("articles").update({
             "llm_relevant": verdict,
             "llm_relevance_reason": reason,
             "llm_verified_at": datetime.now(timezone.utc).isoformat(),
@@ -116,6 +127,7 @@ def run(limit=None):
         time.sleep(0.3)
 
     print(f"\nDone. Kept: {kept}, Dropped: {dropped}, Failed: {failed}.")
+    return {"checked": len(rows), "kept": kept, "dropped": dropped, "failed": failed}
 
 
 if __name__ == "__main__":

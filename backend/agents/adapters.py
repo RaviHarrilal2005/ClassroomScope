@@ -37,6 +37,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from orchestrator.agents import Agent
 from orchestrator.models import RunContext
 
+from .config import optional_key
 from .supabase_client import get_client
 
 logger = logging.getLogger(__name__)
@@ -67,14 +68,20 @@ def _select_by_id(table: str, columns: str, ids: Sequence[int]) -> List[Dict[str
 # ---------------------------------------------------------------------
 class CollectionAgent(Agent):
     """
-    Fetch -> store -> relevance filter -> preprocess, then report the IDs.
+    Fetch -> store -> keyword filter -> LLM relevance check -> preprocess,
+    then report the IDs.
 
     Returns the articles stored this run that analysis can actually use:
-    marked relevant and preprocessed successfully. An article that was
-    stored but turned out to be irrelevant, or whose page could not be
-    downloaded, has no `clean_content`, and every analysis agent reads
-    `clean_content` — passing its ID on would just produce four failures
-    further down the pipeline.
+    confirmed relevant by the LLM and preprocessed successfully. An
+    article that was stored but turned out to be irrelevant, or whose
+    page could not be downloaded, has no `clean_content`, and every
+    analysis agent reads `clean_content` — passing its ID on would just
+    produce four failures further down the pipeline.
+
+    The keyword filter is only a recall pass. The LLM check sets
+    llm_relevant, and preprocess downloads nothing else, so without
+    TRUSSED_API_KEY and TRUSSED_BASE_URL no article can come out of a
+    run. The stage fails up front instead of spending API quota first.
 
     sources           which fetchers to use; None means all of them
     preprocess_limit  cap on pages downloaded per run (each costs ~1s)
@@ -103,7 +110,12 @@ class CollectionAgent(Agent):
         if self.backlog:
             return self._from_backlog()
 
-        from .collection import db, fetchers, filter_relevance, preprocess
+        from .collection import db, fetchers, filter_relevance, llm_verify_relevance, preprocess
+
+        if not (optional_key("TRUSSED_API_KEY") and optional_key("TRUSSED_BASE_URL")):
+            raise RuntimeError(
+                "Collection's relevance check needs TRUSSED_API_KEY and TRUSSED_BASE_URL in backend/.env"
+            )
 
         fetched = fetchers.fetch_all(self.sources)
         logger.info("Run %s: collection fetched %d article(s)", ctx.run_id, len(fetched))
@@ -117,6 +129,14 @@ class CollectionAgent(Agent):
             return {"article_ids": [], "fetched": len(fetched), "stored": 0, "duplicates": skipped}
 
         relevance = filter_relevance.run(article_ids=stored_ids)
+        verified = llm_verify_relevance.run(article_ids=stored_ids)
+        # Every call failing is an outage or a bad key, not a verdict, and
+        # leaves nothing for preprocess. Raise rather than report a run
+        # that found nothing, as the LLM classifier does.
+        if verified["checked"] and verified["failed"] == verified["checked"]:
+            raise RuntimeError(
+                f"The LLM relevance check failed on all {verified['checked']} article(s)"
+            )
         processing = preprocess.run(limit=self.preprocess_limit, article_ids=stored_ids)
 
         usable = self._analysis_ready(stored_ids)
@@ -126,11 +146,12 @@ class CollectionAgent(Agent):
             "stored": len(stored_ids),
             "duplicates": skipped,
             "relevant": relevance["relevant"],
+            "llm_relevant": verified["kept"],
             "preprocessed": processing["success"],
         }
 
     def _analysis_ready(self, ids: Sequence[int]) -> List[int]:
-        """Of `ids`, the ones marked relevant and preprocessed successfully."""
+        """Of `ids`, the ones the LLM confirmed and preprocess succeeded on."""
         rows = []
         client = get_client()
         for batch in _chunks(list(ids)):
@@ -138,7 +159,7 @@ class CollectionAgent(Agent):
                 client.table("articles")
                 .select("id")
                 .in_("id", list(batch))
-                .eq("is_relevant", True)
+                .eq("llm_relevant", True)
                 .eq("processing_status", "success")
                 .execute()
             )
@@ -150,7 +171,7 @@ class CollectionAgent(Agent):
             get_client()
             .table("articles")
             .select("id")
-            .eq("is_relevant", True)
+            .eq("llm_relevant", True)
             .eq("processing_status", "success")
             .order("id")
             .limit(self.backlog_limit)
