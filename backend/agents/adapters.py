@@ -22,7 +22,8 @@ Which stages are real (see docs/pipeline-coordinator.md):
   security        real - SecurityAgent
   classification  real - ClassificationAgent ('baseline' or 'luna')
   topic           real - TopicAgent (needs the saved model file)
-  sentiment       stub - no implementation on any branch yet
+  sentiment       stub - agents/sentiment/ is a standalone script, not
+                  wired in yet
   stance          stub - no implementation on any branch yet
   aggregation     stub - no implementation yet
 """

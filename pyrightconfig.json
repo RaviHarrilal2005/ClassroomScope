@@ -17,7 +17,13 @@
     // without them every line touching those libraries is an unresolved
     // import. The pipeline imports it only inside TopicAgent.run(), and
     // agents/topic/test_saved_model.py covers its logic without the stack.
-    "backend/agents/topic"
+    "backend/agents/topic",
+
+    // agents/sentiment is a standalone script the pipeline does not run:
+    // it loads its models and reads a CSV export as soon as it is
+    // imported. Its transformers and vaderSentiment dependencies are not
+    // in requirements.txt.
+    "backend/agents/sentiment"
   ],
 
   // psycopg2 is optional: only agents/security/filter_validation.py needs

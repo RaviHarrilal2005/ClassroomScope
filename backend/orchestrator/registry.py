@@ -69,7 +69,7 @@ def build_default_registry(live: Optional[bool] = None, **collection_options) ->
                machine with no .env, while a configured deployment gets
                the real pipeline without a code change.
 
-    Stages with no implementation on any branch stay stubbed whatever
+    Stages with no agent the pipeline can call stay stubbed whatever
     `live` says -- see agents/adapters.py for which is which.
 
     collection_options are passed to CollectionAgent (backlog=True,
@@ -106,7 +106,8 @@ def build_default_registry(live: Optional[bool] = None, **collection_options) ->
         registry.register(CLASSIFICATION, agents.stub_analysis(CLASSIFICATION))
         registry.register(TOPIC, agents.stub_analysis(TOPIC))
 
-    # No implementation on any branch yet.
+    # Nothing the pipeline can call yet: sentiment is a standalone script
+    # (agents/sentiment/), and stance has no implementation.
     registry.register(SENTIMENT, agents.stub_analysis(SENTIMENT),
                       fallback=agents.stub_fallback(SENTIMENT))
     registry.register(STANCE, agents.stub_analysis(STANCE))

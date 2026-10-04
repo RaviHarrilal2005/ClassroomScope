@@ -31,6 +31,9 @@ umap-learn>=0.5
 scikit-learn>=1.3
 
 # NOT required to run the pipeline:
-#   psycopg2-binary  - only agents/security/filter_validation.py, which
-#                      reports on the corpus over a direct Postgres
+#   psycopg2-binary  - only agents/security/filter_validation.py and
+#                      quarantine.py, which use a direct Postgres
 #                      connection rather than PostgREST
+#   transformers, vaderSentiment
+#                    - only agents/sentiment/sentiment_agent.py, a
+#                      standalone script the pipeline does not run yet
