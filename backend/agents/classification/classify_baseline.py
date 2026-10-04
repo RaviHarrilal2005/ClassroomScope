@@ -71,7 +71,7 @@ def run(limit=None):
     query = (
         get_client().table("articles")
         .select("id, title, clean_content, url")
-        .eq("is_relevant", True)
+        .eq("llm_relevant", True)
         .eq("processing_status", "success")
     )
     if limit:

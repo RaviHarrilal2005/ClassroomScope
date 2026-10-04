@@ -2,7 +2,7 @@
 
 **Owner:** Juan Reyes\
 **Consumers:** Orchestrator (Ravi), Results Aggregator, Web Dashboard\
-**Last updated:** September 28, 2026\
+**Last updated:** October 3, 2026\
 **Status:** Complete and tested in isolation. Ready for orchestration integration.
 
 ## 1. Purpose
@@ -48,7 +48,7 @@ and LLM-based classification.
 **Side effects:** Inserts rows into `classification_results` with
 `classifier = 'baseline_keyword'`.
 
-**Preconditions:** Rows exist with `is_relevant = TRUE` AND
+**Preconditions:** Rows exist with `llm_relevant = TRUE` AND
 `processing_status = 'success'` AND no existing
 `classification_results` row for this classifier and article.
 
@@ -67,7 +67,7 @@ already-processed articles.
 **Side effects:** Inserts rows into `classification_results` with
 `classifier = 'gpt-5.6-luna'`.
 
-**Preconditions:** Rows exist with `is_relevant = TRUE` AND
+**Preconditions:** Rows exist with `llm_relevant = TRUE` AND
 `processing_status = 'success'` AND no existing
 `classification_results` row for this classifier and article.
 
@@ -155,19 +155,17 @@ ORDER BY n DESC;
 "students" because it's a high-frequency word in education text
 regardless of article subject. Confirmed via manual review of
 disagreement cases.
-
 - Prompt injection surface. `classify_luna` passes raw article
 text to the LLM. Current mitigation: 8,000-char truncation and
 a JSON-only system message. Full sanitization is owned by the
 Security subsystem (Section 2.9).
-
 - No transformer fallback. If the Trussed endpoint is down,
 `classify_luna` fails cleanly, but the classification set is
 incomplete. Re-running later resumes where it left off.
 
-## 10. Current state (as of Sept 28, 2026)
-- Articles classified (baseline): 248
-- Articles classified (gpt-5.6-luna): 248
-- Baseline ↔ Luna agreement: 50.8%
-- Top agreements: students (81), educators (41)
-- Top disagreements: students↔educators (48), students↔administrators (31)
+## 10. Current state (as of Oct 3, 2026)
+- Articles classified (baseline): 264
+- Articles classified (gpt-5.6-luna): 265
+- Baseline ↔ Luna agreement: 50.0%
+- Top agreements: students (118), educators (56)
+- Top disagreements: students↔educators (80), students↔administrators (42)
