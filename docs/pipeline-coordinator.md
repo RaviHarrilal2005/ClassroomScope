@@ -1,10 +1,12 @@
 # Pipeline Coordinator (SS-4)
 
-**Status: running end to end with three real agents, verified against
-the live database.** The sequencing and failure handling are built and
-tested (89 tests). Collection, security and classification are the
-team's real agents; sentiment, topic, stance and aggregation are still
-stubs — see [Which agents are real](#which-agents-are-real).
+**Status: running end to end, verified against the live database.**
+The sequencing and failure handling are built and tested (95 tests).
+Collection, security, classification and topic are the team's real
+agents; sentiment, stance and aggregation are still stubs — see
+[Which agents are real](#which-agents-are-real). The topic stage and
+collection's LLM relevance check were wired in after the verified run
+below, and have not had a live run yet.
 
 Verified with a secret key on 2026-09-29: a run fetched from GNews and
 the RSS feeds, inserted 104 new articles, preprocessed and screened
@@ -67,11 +69,12 @@ backend/
   agents/                   the team's agent implementations, one package per owner
     supabase_client.py      the one Supabase client the agents share
     adapters.py             the Agent subclasses the coordinator calls
-    collection/             fetch, dedupe, relevance filter, preprocess
+    collection/             fetch, dedupe, keyword + LLM relevance check, preprocess
     security/               sanitization filter + its adversarial suite
     classification/         stakeholder and source-type classifiers
-    topic/                  BERTopic model — standalone, stage still stubbed
-  tests/                    89 tests (more get added as features land)
+    topic/                  saved BERTopic model + its offline tests
+    sentiment/              RoBERTa + VADER sentiment — standalone, stage still stubbed
+  tests/                    92 tests (more get added as features land)
   .env                      credentials — gitignored, never commit
 docs/
   pipeline_tables.sql       the originally proposed SQL; see the note in its header
@@ -89,12 +92,12 @@ package without touching sequencing code.
 
 | Stage | Agent | Notes |
 |---|---|---|
-| Collection | **real** | `agents/collection/` — NewsAPI, GNews and six RSS feeds, then dedupe, relevance filter and body extraction |
-| Security | **real** | `agents/security/` — sanitization filter; see the gap below |
+| Collection | **real** | `agents/collection/` — NewsAPI, GNews and eight RSS feeds, then dedupe, a keyword filter, an LLM relevance check and body extraction |
+| Security | **real** | `agents/security/` — sanitization filter; see below |
 | Classification | **real** | `agents/classification/` — LLM classifier when `TRUSSED_API_KEY` is set, keyword scorer otherwise or as its fallback |
-| Sentiment | stub | no implementation on any branch yet |
+| Sentiment | stub | `agents/sentiment/sentiment_agent.py` runs standalone over a CSV export — see below |
 | Stance | stub | no implementation on any branch yet |
-| Topic | stub | `agents/topic/topic_model.py` works standalone — see below |
+| Topic | **real** | `agents/topic/` — topics from a saved BERTopic model, whose file is restored by hand — see below |
 | Aggregation | stub | not written yet |
 
 `build_default_registry(live=...)` chooses. `live=None` (the default)
@@ -104,13 +107,21 @@ stubs otherwise, so the demo and the tests work on a machine with no
 
 ### Collection
 
-Fetch → store → relevance filter → preprocess, then report the IDs.
+Fetch → store → keyword filter → LLM relevance check → preprocess, then
+report the IDs.
+
+The keyword filter is a loose recall pass. The LLM check (Luna, the
+model the LLM classifier uses) sets `llm_relevant`, and preprocess only
+downloads articles it confirmed. So **collection needs
+`TRUSSED_API_KEY` and `TRUSSED_BASE_URL`**: without them no run can
+produce an article, and the stage fails before fetching rather than
+spend API quota first. If every LLM call fails, it raises too.
 
 It returns only the articles it stored **that analysis can actually
-use**: marked relevant and preprocessed successfully. An article whose
-page could not be downloaded has no `clean_content`, and every analysis
-agent reads `clean_content`, so passing its ID on would just produce
-four failures further down.
+use**: confirmed relevant by the LLM and preprocessed successfully. An
+article whose page could not be downloaded has no `clean_content`, and
+every analysis agent reads `clean_content`, so passing its ID on would
+just produce four failures further down.
 
 A run where every article was already stored collects nothing and
 finishes early with "No new articles were collected". That is correct,
@@ -124,30 +135,29 @@ Screens each collected article's title and body through
 `agents/security/text_filter.py`. Anything the filter rejects is left
 out of `approved_ids`, so no analysis agent is handed it.
 
-**The filter scores 29/45 against its own adversarial suite**
-(`python -m agents.security.adversarial_test_set` from `backend/`): 14
-false negatives, 2 false positives. The misses are mostly obfuscated
-prompt injection — zero-width splitting, homoglyphs, leetspeak,
-separator splitting, fullwidth characters, base64 payloads — which the
-suite's own docstring describes a normalization layer for that was
-never written. It is wired in as-is by decision; closing the gap is the
-security owner's.
+**The filter scores 44/45 against its own adversarial suite**
+(`python -m agents.security.adversarial_test_set` from `backend/`), up
+from 29/45 before the security owners added
+`agents/security/injection_normalization.py`. That checks each text as
+written, normalized (zero-width characters, homoglyphs, leetspeak and
+separators folded away), reversed, and with any base64 decoded. The one
+miss is a full name, which no pattern can catch; the filter's own docs
+say it needs NER.
 
-One change was necessary to wire it in at all. The filter's
-`MAX_COMMENT_LENGTH` is 5000 characters, which suits the user comments
-it was first written for. **68% of the articles in the corpus are
-longer than that**, and screening 60 of them with the default
-quarantines 45 for length alone. `SecurityAgent` raises the cap to
-200,000 for article bodies (the longest article today is 101,377
-characters) and leaves the filter's own default untouched for other
-callers.
+The filter's length cap, `MAX_TEXT_LENGTH`, is 50,000 characters. The
+longest article today is 101,377, so `SecurityAgent` raises the cap to
+200,000 for article bodies and leaves the filter's own default
+untouched for other callers.
 
 Two things it deliberately does not do:
 
-- **Quarantine decisions are not persisted.** There is no table for
-  them. They are logged at WARNING and counted by reason in the stage's
-  summary, so you can see what a run rejected and why, but you cannot
-  query it afterwards. Adding a table is a schema change for the team.
+- **Quarantine decisions are not persisted.** They are logged at
+  WARNING and counted by reason in the stage's summary, so you can see
+  what a run rejected and why, but you cannot query it afterwards. The
+  security owners' `agents/security/quarantine.py` writes rejections to
+  a `quarantined_content` table, which exists in the database, but over
+  a direct Postgres connection the pipeline does not have, and the
+  table has no migration in this repo.
 - **The redacted text is not written back.** The filter redacts emails,
   phone numbers, SSNs and addresses in the text it returns, but analysis
   agents read `clean_content` straight from the database and so still
@@ -167,22 +177,38 @@ real values**. A placeholder copied from `.env.example` counts as
 unset — otherwise every run burns its retries on a 401 before falling
 back.
 
-### Topic — why it is still a stub
+### Topic
 
-`agents/topic/topic_model.py` works and has already written 243 rows to
-`topic_results`. It is not wired in because it needs `bertopic`,
-`sentence-transformers`, `umap-learn` and `torch`: roughly 2GB, which
-would land on everyone who installs the backend and on CI. Run it by
-hand for now:
+Assigns each approved article a topic from a **saved** BERTopic model
+and inserts it into `topic_results`, with a permanent topic ID
+(`stable_topic_id`, T001–T005) and the model's version. It never trains
+during a run: the model file must match the checksum registered in
+`agents/topic/topic_catalog.json`, or the stage fails. Existing
+assignments are kept, not overwritten. See
+`agents/topic/TOPIC_IDENTITY.md`.
 
-```
-pip install bertopic sentence-transformers umap-learn pandas scikit-learn
-python -m agents.topic.topic_model
-```
+**The model file is not in the repo.** It is gitignored
+(`backend/agents/topic/models/`) and restored by hand. On a machine
+without it the topic stage fails, and a run finishes
+`completed_with_errors` with the other analysis stages unaffected.
 
-Wiring it in means adding a `TopicAgent` to `agents/adapters.py` that
-imports BERTopic inside `run()`, registering it in `registry.py`, and
-dropping the `backend/agents/topic` entry from `pyrightconfig.json`.
+BERTopic and its stack (~2GB with torch) are in `requirements.txt`. The
+adapter imports the module only inside `run()`, so building the
+registry, the tests and the dev server never load it.
+`pyrightconfig.json` still excludes the package; its offline tests run
+with `python -m pytest agents/topic`.
+
+### Sentiment — not wired in yet
+
+`agents/sentiment/sentiment_agent.py` labels each article with a
+news-trained RoBERTa model, with VADER as a baseline to compare against.
+It is a script: it reads a CSV export of `articles` and writes CSV
+files, which were uploaded by hand to `sentiment_results` (254 rows
+today). It loads its models and reads that CSV as soon as it is
+imported, so the pipeline cannot call it as it stands. Wiring it in
+means moving that work into functions, and adding a `SentimentAgent`
+adapter that reads the approved articles and writes `sentiment_results`
+(`article_id`, `sentiment`, `confidence`, `method`) itself.
 
 ## Running it
 
@@ -202,7 +228,7 @@ python run_pipeline.py --live               # the real agents: fetches news, dow
 python run_pipeline.py --live --backlog     # the real agents over articles already
                                             # stored — no API quota, no downloads
 
-python -m pytest tests                      # run the tests
+python -m pytest tests agents/topic         # run the tests
 python -m pyright backend/                  # type check (from the repo root)
 ```
 
@@ -227,11 +253,13 @@ Starting a run while another is active returns `409` with the active run's ID.
 
 ## Testing plan
 
-89 tests, none of which touch the network: stage order, the four
+95 tests, none of which touch the network: stage order, the four
 analysis agents running at the same time, each failure rule, the API,
 the Supabase store against a fake client, and the adapters against fake
 agent modules. The suite passes `live=False`, so it behaves the same
-with or without credentials in `backend/.env`.
+with or without credentials in `backend/.env`. Three of them are the
+topic owner's offline tests in `agents/topic/`; the rest are in
+`tests/`.
 
 Tests get added alongside the features they cover:
 
@@ -434,12 +462,18 @@ fails if the deployed schema and the code drift apart.
 
 ## Known limitations and next steps
 
-- **Four stages are still stubs.** Sentiment, stance and aggregation
-  have no implementation anywhere; topic has one that is not wired in.
+- **Three stages are still stubs.** Sentiment has a standalone script
+  that is not wired in; stance and aggregation have no implementation.
   See [Which agents are real](#which-agents-are-real).
-- **The security filter misses 14 of 45 adversarial cases**, mostly
-  obfuscated prompt injection, and its quarantine decisions are not
-  stored anywhere queryable.
+- **The topic stage only runs where its model file has been restored.**
+  Everywhere else it fails, and runs finish `completed_with_errors`.
+- **The security filter's quarantine decisions are not stored anywhere
+  queryable** by the pipeline, and the filter misses full names (1 of
+  45 adversarial cases).
+- **A collection retry after a late failure collects nothing.** If the
+  stage fails after storing its articles (the LLM check, say), the
+  retry finds them all already stored and returns no articles, so the
+  run finishes early as if there were no news.
 - **No per-stage timeout.** An agent that hangs holds up its run. This
   matters more now than it did with stubs: collection downloads article
   pages one second apart, and the LLM classifier makes one call per
@@ -484,8 +518,11 @@ fails if the deployed schema and the code drift apart.
    [Supabase run store](#supabase-run-store).
 5. **Where do quarantine decisions go?** Security screening drops
    articles from `approved_ids` and logs why, but nothing records it.
-   A table — article_id, run_id, reason, matched pattern — would make
-   "what did screening reject last night, and was it right?" answerable.
+   A `quarantined_content` table now exists in the database, and
+   `agents/security/quarantine.py` writes to it over a direct Postgres
+   connection, while the pipeline only has the Supabase client. Picking
+   one path, and committing a migration for the table, would make "what
+   did screening reject last night, and was it right?" answerable.
    Needed before anyone trusts the filter's false-positive rate.
 6. **Should screening write back the redacted text?** The filter
    already produces it; analysis agents currently read the unredacted

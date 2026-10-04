@@ -1,1 +1,1 @@
-"""Topic modelling (BERTopic). Standalone for now - the stage is still stubbed."""
+"""Topic modelling (BERTopic), from a saved, registered model."""
