@@ -83,9 +83,9 @@ def build_default_registry(live: Optional[bool] = None, **collection_options) ->
         live = is_configured()
 
     if live:
-        from agents.adapters import ClassificationAgent, CollectionAgent, SecurityAgent
+        from agents.adapters import ClassificationAgent, CollectionAgent, SecurityAgent, TopicAgent
 
-        logger.info("Registry: real agents for collection, security and classification")
+        logger.info("Registry: real agents for collection, security, classification and topic")
         registry.register(COLLECTION, CollectionAgent(**collection_options))
         registry.register(SECURITY, SecurityAgent())
         # The LLM classifier is better but needs a reachable endpoint, so
@@ -98,19 +98,18 @@ def build_default_registry(live: Optional[bool] = None, **collection_options) ->
         else:
             logger.info("Registry: TRUSSED_API_KEY not set, using the keyword classifier")
             registry.register(CLASSIFICATION, ClassificationAgent("baseline"))
+        registry.register(TOPIC, TopicAgent())
     else:
         logger.info("Registry: stub agents (Supabase not configured)")
         registry.register(COLLECTION, agents.stub_collection())
         registry.register(SECURITY, agents.stub_security())
         registry.register(CLASSIFICATION, agents.stub_analysis(CLASSIFICATION))
+        registry.register(TOPIC, agents.stub_analysis(TOPIC))
 
     # No implementation on any branch yet.
     registry.register(SENTIMENT, agents.stub_analysis(SENTIMENT),
                       fallback=agents.stub_fallback(SENTIMENT))
     registry.register(STANCE, agents.stub_analysis(STANCE))
-    # agents/topic/topic_model.py runs standalone but pulls in ~2GB of ML
-    # libraries, so the stage is stubbed on purpose. See the docs.
-    registry.register(TOPIC, agents.stub_analysis(TOPIC))
     registry.register(AGGREGATION, agents.stub_aggregation())
     return registry
 

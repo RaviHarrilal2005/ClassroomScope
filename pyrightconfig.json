@@ -12,12 +12,11 @@
     "**/node_modules",
     ".venv",
 
-    // agents/topic is the BERTopic model. It is a standalone script: the
-    // topic stage is still a stub, so bertopic, sentence-transformers and
-    // umap-learn are deliberately not installed (~2GB). Without them every
-    // line touching those libraries is an unresolved import, and checking
-    // the file would mean installing the stack to type-check code nothing
-    // runs. Drop this entry when the topic stage is wired in.
+    // agents/topic is the BERTopic model. Checking it needs bertopic,
+    // sentence-transformers and umap-learn installed (~2GB with torch);
+    // without them every line touching those libraries is an unresolved
+    // import. The pipeline imports it only inside TopicAgent.run(), and
+    // agents/topic/test_saved_model.py covers its logic without the stack.
     "backend/agents/topic"
   ],
 

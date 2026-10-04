@@ -23,10 +23,10 @@ mapping it to an existing permanent topic ID or allocating a new one. Never
 reuse the old cluster numbers as evidence of topic identity. No new training
 command is introduced in this step because the existing trained model is available.
 
-Run from the project folder:
+Run from `backend/`:
 
 ```bash
-.venv/bin/python topic_model_agent/topic_model.py
+python -m agents.topic.topic_model
 ```
 
 Deleting previous results allows eligible articles to receive new assignments

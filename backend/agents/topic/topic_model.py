@@ -7,8 +7,6 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from pathlib import Path
-from dotenv import load_dotenv
-from supabase import create_client
 
 import pandas as pd
 from bertopic import BERTopic
@@ -37,13 +35,13 @@ def get_model_registration(model_path):
     return registration
 
 def get_database():
-    env_path = Path(__file__).resolve().parents[1] / "backend" / ".env"
-    load_dotenv(env_path)
+    # The shared client resolves backend/.env and the SUPABASE_KEY /
+    # SUPABASE_ANON_KEY naming in one place. A path built from this
+    # file's location breaks whenever the module moves, as it did when
+    # it moved under backend/agents/.
+    from ..supabase_client import get_client
 
-    return create_client(
-        os.environ["SUPABASE_URL"],
-        os.environ["SUPABASE_KEY"],
-    )
+    return get_client()
 
 def save_topic_results(results):
     """Insert new article assignments and preserve historical results."""

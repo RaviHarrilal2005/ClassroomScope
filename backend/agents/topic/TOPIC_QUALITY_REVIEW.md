@@ -77,5 +77,5 @@ No labels, keywords, model files, catalog mappings, database assignments, or col
 ## Evidence files
 
 - Current export: `/Users/esme/Downloads/topic_results_rows.csv`
-- Saved excerpts: `topic_model_agent/models/provisional_v2_review.md`
-- Identity and labels: `topic_model_agent/topic_catalog.json`
+- Saved excerpts: `backend/agents/topic/models/provisional_v2_review.md`
+- Identity and labels: `backend/agents/topic/topic_catalog.json`

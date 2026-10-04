@@ -4,8 +4,8 @@ The team's agents, wrapped in the coordinator's Agent contract.
 Each class is a thin shell over a teammate's module: it translates the
 RunContext into that module's arguments, and the module's result into
 the summary dict the coordinator expects. The real work stays in
-collection/, security/ and classification/, so an owner can keep
-editing their own code without touching orchestrator code.
+collection/, security/, classification/ and topic/, so an owner can
+keep editing their own code without touching orchestrator code.
 
 Two rules from the contract are worth repeating here, because the
 standalone scripts break both by design:
@@ -21,11 +21,9 @@ Which stages are real (see docs/pipeline-coordinator.md):
   collection      real - CollectionAgent
   security        real - SecurityAgent
   classification  real - ClassificationAgent ('baseline' or 'luna')
+  topic           real - TopicAgent (needs the saved model file)
   sentiment       stub - no implementation on any branch yet
   stance          stub - no implementation on any branch yet
-  topic           stub - agents/topic/topic_model.py works standalone,
-                  but needs ~2GB of ML libraries, so it is deliberately
-                  not wired in
   aggregation     stub - no implementation yet
 """
 from __future__ import annotations
@@ -411,3 +409,29 @@ class ClassificationAgent(Agent):
                 list(batch), on_conflict="article_id,classifier"
             ).execute()
         return len(records)
+
+
+# ---------------------------------------------------------------------
+# Topic
+# ---------------------------------------------------------------------
+class TopicAgent(Agent):
+    """
+    A topic for each approved article, from the saved BERTopic model.
+
+    agents/topic/topic_model.py has its own TopicAgent that already
+    follows the agent contract; this shell only defers importing it.
+    That module loads BERTopic and its ML stack, and building the
+    registry must not need any of it.
+
+    The stage needs the saved model file, which is gitignored (see
+    agents/topic/TOPIC_IDENTITY.md). Without it, or with a file whose
+    checksum is not registered in topic_catalog.json, the stage fails;
+    it never trains a replacement.
+    """
+
+    name = "topic"
+
+    def run(self, ctx: RunContext) -> Dict[str, Any]:
+        from .topic import topic_model
+
+        return topic_model.TopicAgent().run(ctx)
