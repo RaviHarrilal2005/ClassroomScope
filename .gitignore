@@ -12,6 +12,9 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+# Saved topic models: binary, large, and restored by hand
+# (backend/agents/topic/TOPIC_IDENTITY.md).
+backend/agents/topic/models/
 
 # Editor/OS
 .vscode/

@@ -21,11 +21,16 @@ beautifulsoup4>=4.12
 # HTML stripping in the sanitization filter.
 bleach>=6.0
 
+# --- agents/topic --------------------------------------------------------
+# BERTopic, for the saved topic model. sentence-transformers pulls in
+# torch, so this section is most of the install (~2GB).
+pandas>=2.0
+sentence-transformers>=3.0
+bertopic>=0.16
+umap-learn>=0.5
+scikit-learn>=1.3
+
 # NOT required to run the pipeline:
 #   psycopg2-binary  - only agents/security/filter_validation.py, which
 #                      reports on the corpus over a direct Postgres
 #                      connection rather than PostgREST
-#   bertopic, sentence-transformers, umap-learn, torch, pandas, scikit-learn
-#                    - only agents/topic/topic_model.py. The topic stage is
-#                      still a stub, so the ~2GB install is left out on
-#                      purpose. See docs/pipeline-coordinator.md.
