@@ -103,13 +103,14 @@ def use_installed_umap_functions(topic_model, distances=None):
         if func is not None:
             setattr(umap_model, attr, getattr(distances, func.py_func.__name__))
 
-def analyze_topics(articles, topic_count=None, model_path=None):
-    """Assign articles with a saved model. topic_count is retained for caller compatibility.
+def eligible_articles(articles):
+    """Relevant, successfully processed articles with text, one per content hash.
 
-    Topic count is chosen during deliberate training, never during inference.
+    Shared by inference and train_auto.py, so a model is trained on exactly
+    the kind of article it will later be asked to assign.
     """
     if articles.empty:
-        return pd.DataFrame(columns=TOPIC_RESULT_COLUMNS)
+        return articles
     articles = articles[
         (articles["is_relevant"] == True)
         & (articles["llm_relevant"] == True)
@@ -119,7 +120,16 @@ def analyze_topics(articles, topic_count=None, model_path=None):
     # Only hashes that are present establish duplicate identity.
     hashes = articles["content_hash"]
     duplicate = hashes.notna() & hashes.ne("") & hashes.duplicated()
-    articles = articles[~duplicate].reset_index(drop=True)
+    return articles[~duplicate].reset_index(drop=True)
+
+def analyze_topics(articles, topic_count=None, model_path=None):
+    """Assign articles with a saved model. topic_count is retained for caller compatibility.
+
+    Topic count is chosen during deliberate training, never during inference.
+    """
+    if articles.empty:
+        return pd.DataFrame(columns=TOPIC_RESULT_COLUMNS)
+    articles = eligible_articles(articles)
     if articles.empty:
         return pd.DataFrame(columns=TOPIC_RESULT_COLUMNS)
 
