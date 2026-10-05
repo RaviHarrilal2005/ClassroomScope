@@ -2,6 +2,9 @@
 node_modules/
 frontend/dist/
 npm-debug.log*
+# Stray lockfile from running npm at the repo root; the real one is
+# frontend/package-lock.json.
+/package-lock.json
 
 # Python
 __pycache__/
@@ -9,6 +12,12 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+<<<<<<< HEAD
+=======
+# Saved topic models: binary, large, and restored by hand
+# (backend/agents/topic/TOPIC_IDENTITY.md).
+backend/agents/topic/models/
+>>>>>>> main
 
 # Editor/OS
 .vscode/

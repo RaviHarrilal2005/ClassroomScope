@@ -2,15 +2,38 @@ flask==3.0.3
 flask-cors==4.0.1
 
 # Run store: app.py uses SupabaseRunStore when SUPABASE_URL / SUPABASE_KEY
-# are set (see docs/pipeline-coordinator.md).
+# are set (see docs/pipeline-coordinator.md). The agents in backend/agents/
+# read and write their own tables through the same client.
 supabase>=2.0
 
 # Loads backend/.env so SUPABASE_URL / SUPABASE_KEY reach os.environ.
 python-dotenv>=1.0
 
-# Topic analysis agent
+# --- agents/collection ---------------------------------------------------
+# HTTP for the NewsAPI and GNews fetchers and for preprocess.py, which
+# downloads each article page; feedparser for the RSS feeds; beautifulsoup
+# to pull the body text out of the downloaded HTML.
+requests>=2.31
+feedparser>=6.0
+beautifulsoup4>=4.12
+
+# --- agents/security -----------------------------------------------------
+# HTML stripping in the sanitization filter.
+bleach>=6.0
+
+# --- agents/topic --------------------------------------------------------
+# BERTopic, for the saved topic model. sentence-transformers pulls in
+# torch, so this section is most of the install (~2GB).
 pandas>=2.0
 sentence-transformers>=3.0
 bertopic>=0.16
 umap-learn>=0.5
 scikit-learn>=1.3
+
+# NOT required to run the pipeline:
+#   psycopg2-binary  - only agents/security/filter_validation.py and
+#                      quarantine.py, which use a direct Postgres
+#                      connection rather than PostgREST
+#   transformers, vaderSentiment
+#                    - only agents/sentiment/sentiment_agent.py, a
+#                      standalone script the pipeline does not run yet

@@ -30,7 +30,7 @@ def test_only_one_run_at_a_time():
         gate.wait(timeout=5)   # hold the run open until the test releases it
         return {"article_ids": [1, 2]}
 
-    registry = build_default_registry()
+    registry = build_default_registry(live=False)
     registry.register(COLLECTION, StubAgent("slow_collection", output=slow_collection))
     client, runner = build_client(registry)
 

@@ -8,7 +8,22 @@ Run the pipeline once from the terminal and print what happened.
     python run_pipeline.py --flaky collection   fails once, succeeds on retry
     python run_pipeline.py --verbose            also show the coordinator's log
 
-Uses stub agents and in-memory storage, so it needs no database.
+    python run_pipeline.py --live               the real agents (needs .env)
+    python run_pipeline.py --live --backlog     the real agents over articles
+                                                already stored, so no news-API
+                                                quota is spent and no pages are
+                                                downloaded
+
+By default this uses stub agents and in-memory storage, so it needs no
+database. --live swaps in the real collection, security and
+classification agents, and the topic agent where BERTopic and a saved
+topic model are installed; sentiment, stance and aggregation stay
+stubbed either way.
+
+Run status is always kept in memory here, never written to
+pipeline_runs — this is a demo harness, and a run from it should not
+show up in the dashboard's history.
+
 Backoff waits are shortened so the demo doesn't sit idle.
 """
 import argparse
@@ -44,12 +59,27 @@ def main(argv=None) -> int:
     parser.add_argument("--flaky", choices=PIPELINE_ORDER, action="append", default=[],
                         help="make this stage fail once, then succeed (can repeat)")
     parser.add_argument("--verbose", action="store_true", help="show the coordinator's log messages")
+    parser.add_argument("--live", action="store_true",
+                        help="use the real agents (needs Supabase credentials in .env)")
+    parser.add_argument("--backlog", action="store_true",
+                        help="with --live, analyze articles already stored instead of "
+                             "fetching new ones (no news-API quota spent)")
+    parser.add_argument("--limit", type=int, default=50, metavar="N",
+                        help="with --backlog, how many stored articles to analyze (default 50)")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO if args.verbose else logging.CRITICAL,
                         format="    log: %(message)s")
 
-    registry = build_default_registry()
+    if args.backlog and not args.live:
+        parser.error("--backlog only means something with --live")
+
+    if args.live:
+        registry = build_default_registry(
+            live=True, backlog=args.backlog, backlog_limit=args.limit,
+        )
+    else:
+        registry = build_default_registry(live=False)
     for stage in args.flaky:
         registry.register(stage, FlakyOnce(registry.get(stage)), fallback=registry.get_fallback(stage))
     for stage in args.fail:

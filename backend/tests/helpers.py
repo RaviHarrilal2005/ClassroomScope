@@ -16,7 +16,7 @@ def build_client(registry=None):
     from app import create_app
 
     coordinator = PipelineCoordinator(
-        registry or build_default_registry(), InMemoryRunStore(), sleep=lambda seconds: None,
+        registry or build_default_registry(live=False), InMemoryRunStore(), sleep=lambda seconds: None,
     )
     runner = BackgroundRunner(coordinator)
     app = create_app(runner=runner)

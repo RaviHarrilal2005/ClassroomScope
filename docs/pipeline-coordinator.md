@@ -1,11 +1,19 @@
 # Pipeline Coordinator (SS-4)
 
-**Status: groundwork in place, run store connected and verified.** The
-sequencing and failure handling are built and tested (20 tests). Every
-agent is still a stub. Run status goes to the Supabase `pipeline_runs` /
-`pipeline_stage_runs` tables when credentials are set, and a full
-seven-stage run has been recorded end to end. See
-[Supabase run store](#supabase-run-store).
+**Status: running end to end, verified against the live database.**
+The sequencing and failure handling are built and tested (98 tests).
+Collection, security, classification and topic are the team's real
+agents; sentiment, stance and aggregation are still stubs — see
+[Which agents are real](#which-agents-are-real). The topic stage and
+collection's LLM relevance check were wired in after the verified run
+below, and have not had a live run yet.
+
+Verified with a secret key on 2026-09-29: a run fetched from GNews and
+the RSS feeds, inserted 104 new articles, preprocessed and screened
+them, classified 11 with the LLM classifier, and recorded all seven
+stages to `pipeline_runs` / `pipeline_stage_runs` — run #10, status
+`completed`. `GET /api/v1/runs` and `GET /api/v1/runs/<id>` read it
+back. See [Supabase run store](#supabase-run-store).
 
 ## What it does
 
@@ -51,20 +59,158 @@ backend/
     stages.py               stage names, order, and status values
     models.py               run/stage records (match the proposed tables column for column)
     agents.py               the agent contract + stub agents
-    registry.py             which agent runs each stage — edit this to plug in real agents
+    registry.py             which agent runs each stage — real agents or stubs
     retry.py                attempts and backoff per stage
     coordinator.py          sequencing and failure handling
     runner.py               runs the pipeline on a background thread
     routes.py               API endpoints
     store.py                the RunStore interface + the in-memory implementation
     supabase_store.py       Supabase implementation (verified against the real database)
-  tests/                    20 tests (more get added as features land)
-  .env                      SUPABASE_URL / SUPABASE_KEY — gitignored, never commit
+  agents/                   the team's agent implementations, one package per owner
+    supabase_client.py      the one Supabase client the agents share
+    adapters.py             the Agent subclasses the coordinator calls
+    collection/             fetch, dedupe, keyword + LLM relevance check, preprocess
+    security/               sanitization filter + its adversarial suite
+    classification/         stakeholder and source-type classifiers
+    topic/                  saved BERTopic model + its offline tests
+    sentiment/              RoBERTa + VADER sentiment — standalone, stage still stubbed
+  tests/                    95 tests (more get added as features land)
+  .env                      credentials — gitignored, never commit
 docs/
   pipeline_tables.sql       the originally proposed SQL; see the note in its header
 supabase/
   migrations/               schema changes applied with `supabase db push`
+pyrightconfig.json          type-checker settings
 ```
+
+The split matters: `orchestrator/` never imports an agent, and
+`agents/<stage>/` is its owner's code. `agents/adapters.py` is the only
+file that knows about both, so an owner can keep working in their own
+package without touching sequencing code.
+
+## Which agents are real
+
+| Stage | Agent | Notes |
+|---|---|---|
+| Collection | **real** | `agents/collection/` — NewsAPI, GNews and eight RSS feeds, then dedupe, a keyword filter, an LLM relevance check and body extraction |
+| Security | **real** | `agents/security/` — sanitization filter; see below |
+| Classification | **real** | `agents/classification/` — LLM classifier when `TRUSSED_API_KEY` is set, keyword scorer otherwise or as its fallback |
+| Sentiment | stub | `agents/sentiment/sentiment_agent.py` runs standalone over a CSV export — see below |
+| Stance | stub | no implementation on any branch yet |
+| Topic | **real** where its model is | `agents/topic/` — topics from a saved BERTopic model, whose file is restored by hand; a stub on machines without it — see below |
+| Aggregation | stub | not written yet |
+
+`build_default_registry(live=...)` chooses. `live=None` (the default)
+decides from the environment: real agents when Supabase is configured,
+stubs otherwise, so the demo and the tests work on a machine with no
+`.env`. The stubbed stages stay stubbed whatever it is asked.
+
+### Collection
+
+Fetch → store → keyword filter → LLM relevance check → preprocess, then
+report the IDs.
+
+The keyword filter is a loose recall pass. The LLM check (Luna, the
+model the LLM classifier uses) sets `llm_relevant`, and preprocess only
+downloads articles it confirmed. So **collection needs
+`TRUSSED_API_KEY` and `TRUSSED_BASE_URL`**: without them no run can
+produce an article, and the stage fails before fetching rather than
+spend API quota first. If every LLM call fails, it raises too.
+
+It returns only the articles it stored **that analysis can actually
+use**: confirmed relevant by the LLM and preprocessed successfully. An
+article whose page could not be downloaded has no `clean_content`, and
+every analysis agent reads `clean_content`, so passing its ID on would
+just produce four failures further down.
+
+A run where every article was already stored collects nothing and
+finishes early with "No new articles were collected". That is correct,
+not a fault — but it means you cannot exercise the rest of the pipeline
+that way once the corpus is current. `--backlog` (below) exists for
+that.
+
+### Security
+
+Screens each collected article's title and body through
+`agents/security/text_filter.py`. Anything the filter rejects is left
+out of `approved_ids`, so no analysis agent is handed it.
+
+**The filter scores 44/45 against its own adversarial suite**
+(`python -m agents.security.adversarial_test_set` from `backend/`), up
+from 29/45 before the security owners added
+`agents/security/injection_normalization.py`. That checks each text as
+written, normalized (zero-width characters, homoglyphs, leetspeak and
+separators folded away), reversed, and with any base64 decoded. The one
+miss is a full name, which no pattern can catch; the filter's own docs
+say it needs NER.
+
+The filter's length cap, `MAX_TEXT_LENGTH`, is 50,000 characters. The
+longest article today is 101,377, so `SecurityAgent` raises the cap to
+200,000 for article bodies and leaves the filter's own default
+untouched for other callers.
+
+Two things it deliberately does not do:
+
+- **Quarantine decisions are not persisted.** They are logged at
+  WARNING and counted by reason in the stage's summary, so you can see
+  what a run rejected and why, but you cannot query it afterwards. The
+  security owners' `agents/security/quarantine.py` writes rejections to
+  a `quarantined_content` table, which exists in the database, but over
+  a direct Postgres connection the pipeline does not have, and the
+  table has no migration in this repo.
+- **The redacted text is not written back.** The filter redacts emails,
+  phone numbers, SSNs and addresses in the text it returns, but analysis
+  agents read `clean_content` straight from the database and so still
+  see the unredacted article. Screening currently decides pass or
+  quarantine, nothing more.
+
+### Classification
+
+Writes `stakeholder_category` and `source_type` to
+`classification_results` for the approved articles, tagged with which
+classifier produced the row so the two can be compared (classification
+README, F.10).
+
+The LLM classifier runs as the primary agent with the keyword scorer as
+its fallback **only when `TRUSSED_API_KEY` and `TRUSSED_BASE_URL` hold
+real values**. A placeholder copied from `.env.example` counts as
+unset — otherwise every run burns its retries on a 401 before falling
+back.
+
+### Topic
+
+Assigns each approved article a topic from a **saved** BERTopic model
+and inserts it into `topic_results`, with a permanent topic ID
+(`stable_topic_id`, T001–T005) and the model's version. It never trains
+during a run: the model file must match the checksum registered in
+`agents/topic/topic_catalog.json`, or the stage fails. Existing
+assignments are kept, not overwritten. See
+`agents/topic/TOPIC_IDENTITY.md`.
+
+**The model file is not in the repo.** It is gitignored
+(`backend/agents/topic/models/`) and restored by hand. The registry uses
+the topic agent only where BERTopic is installed and a model file is in
+that folder; anywhere else topic stays a stub, as before, rather than
+fail every run. Restoring the file switches it on at the next start. A
+file whose checksum is not registered still fails the stage loudly.
+
+BERTopic and its stack (~2GB with torch) are in `requirements.txt`. The
+adapter imports the module only inside `run()`, so building the
+registry, the tests and the dev server never load it.
+`pyrightconfig.json` still excludes the package; its offline tests run
+with `python -m pytest agents/topic`.
+
+### Sentiment — not wired in yet
+
+`agents/sentiment/sentiment_agent.py` labels each article with a
+news-trained RoBERTa model, with VADER as a baseline to compare against.
+It is a script: it reads a CSV export of `articles` and writes CSV
+files, which were uploaded by hand to `sentiment_results` (254 rows
+today). It loads its models and reads that CSV as soon as it is
+imported, so the pipeline cannot call it as it stands. Wiring it in
+means moving that work into functions, and adding a `SentimentAgent`
+adapter that reads the approved articles and writes `sentiment_results`
+(`article_id`, `sentiment`, `confidence`, `method`) itself.
 
 ## Running it
 
@@ -73,14 +219,29 @@ From the `backend` folder:
 ```
 pip install -r requirements-dev.txt
 
-python run_pipeline.py                      # normal run
+python run_pipeline.py                      # normal run (stub agents, no database)
 python run_pipeline.py --fail topic         # one analysis agent fails
 python run_pipeline.py --fail sentiment     # sentiment fails, fallback takes over
 python run_pipeline.py --fail security      # screening fails, analysis skipped
 python run_pipeline.py --flaky collection   # fails once, succeeds on retry
 
-python -m pytest tests                      # run the tests
+python run_pipeline.py --live               # the real agents: fetches news, downloads
+                                            # article pages, writes results
+python run_pipeline.py --live --backlog     # the real agents over articles already
+                                            # stored — no API quota, no downloads
+
+python -m pytest tests agents/topic         # run the tests
+python -m pyright backend/                  # type check (from the repo root)
 ```
+
+`--backlog` is how to exercise the pipeline against the real corpus.
+Plain `--live` fetches from the news APIs and downloads every new
+article's page at one second apiece, and once the corpus is current it
+usually collects nothing and the run finishes early.
+
+`run_pipeline.py` always keeps run status in memory, never in
+`pipeline_runs`, so a demo run does not show up in the dashboard's
+history.
 
 Through the API (with `python app.py` running):
 
@@ -94,29 +255,50 @@ Starting a run while another is active returns `409` with the active run's ID.
 
 ## Testing plan
 
-The 20 current tests cover this week's work: stage order, the four
-analysis agents running at the same time, each failure rule, and the
-API. Tests get added alongside the features they cover:
+98 tests, none of which touch the network: stage order, the four
+analysis agents running at the same time, each failure rule, the API,
+the Supabase store against a fake client, and the adapters against fake
+agent modules. The suite passes `live=False`, so it behaves the same
+with or without credentials in `backend/.env`. Three of them are the
+topic owner's offline tests in `agents/topic/`; the rest are in
+`tests/`.
 
-| When we... | Add tests for |
-|---|---|
-| switch to the Supabase tables | the Supabase store, and a check that the SQL and code stay in sync |
-| plug in the real agents | malformed output, duplicate articles, quarantined articles, misbehaving agents |
-| have the dashboard poll run status | the run-list and run-status endpoints |
-| settle the retry settings | retry counts and backoff timing |
-| add scheduled runs or single-stage re-runs | run lifecycle rules |
+Tests get added alongside the features they cover:
+
+| When we... | Add tests for | |
+|---|---|---|
+| switch to the Supabase tables | the Supabase store, and a check that the SQL and code stay in sync | **landed** |
+| plug in the real agents | malformed output, duplicate articles, quarantined articles, misbehaving agents | **landed** |
+| have the dashboard poll run status | the run-list and run-status endpoints | waiting |
+| settle the retry settings | retry counts and backoff timing | waiting |
+| add scheduled runs or single-stage re-runs | run lifecycle rules | waiting |
+
+The three groups still waiting are in `tests-to-add-later/`.
 
 ## For agent owners: plugging in your agent
 
-1. Subclass `Agent` from `orchestrator/agents.py` and implement `run(ctx)`.
-2. `ctx` holds `run_id`, `article_ids` (collected), `approved_ids`
+1. Put your code in `backend/agents/<your stage>/`. It stays yours —
+   nothing in `orchestrator/` imports it.
+2. Add an `Agent` subclass to `agents/adapters.py` that calls your code
+   and implements `run(ctx)`.
+3. `ctx` holds `run_id`, `article_ids` (collected), `approved_ids`
    (passed security), and `completed_analysis` (for aggregation). It
    never holds article text — read what you need from the database.
-3. Write your results to your own table, then return a small summary dict.
-4. If something goes wrong, **raise an exception**. Don't retry inside
+4. Read and write the database through `agents/supabase_client.py`'s
+   `get_client()`. Don't build your own client and don't call
+   `load_dotenv()` at import time: your module gets imported by the
+   test suite and by the app, not just run as a script.
+5. Write your results to your own table, then return a small summary dict.
+6. If something goes wrong, **raise an exception**. Don't retry inside
    your agent and don't swallow errors — the coordinator handles retries,
-   fallbacks, and recording the failure.
-5. Replace your stage's stub in `build_default_registry()` in `registry.py`.
+   fallbacks, and recording the failure. This is the rule the standalone
+   scripts break most often: catching an error and printing it makes a
+   failed stage look like a stage that found nothing.
+7. Register it in `build_default_registry()` in `registry.py`, in the
+   `live` branch.
+8. Keep your work inside the IDs you were given. `ctx.approved_ids` is
+   what security passed; a stage that processes the whole table instead
+   is not doing the run it was asked for.
 
 What each stage must return (the coordinator checks this and treats
 anything else as a failure):
@@ -169,7 +351,42 @@ Use the **secret** key. The publishable (`sb_publishable_…`) key has no
 privileges on the run tables — writes fail with `42501 permission
 denied`. Postgres suggests fixing that with `GRANT INSERT … TO anon`;
 don't. The publishable key ships to browsers, so that would let anyone
-forge pipeline runs.
+forge pipeline runs — or, for `articles`, inject content straight into
+the corpus the analysis agents read.
+
+### Which key unlocks what
+
+Both measured against the live project:
+
+| | publishable key | secret key |
+|---|---|---|
+| Read `articles` | yes | yes |
+| **Insert `articles`** (collection) | **no — 42501** | yes |
+| Read `pipeline_stage_runs` | **no — 42501** | yes |
+| Write `classification_results` | yes | yes |
+| Write `pipeline_runs` / `pipeline_stage_runs` | **no — 42501** | yes |
+
+With a publishable key the pipeline runs, but only in `--backlog` mode,
+and nothing about the run is recorded: `build_run_store()` falls back
+to `InMemoryRunStore` and the history is lost when the process stops.
+Collection fails all three attempts and the run ends `failed` with the
+Postgres hint in `error_detail`. That is a confusing state to debug,
+because most of a backlog run looks healthy — so `build_run_store()`
+says at startup when the anon key is the only one set.
+
+### Two things that look like bugs and are not
+
+- **`SUPABASE_URL` set to the dashboard page.** Copying the project URL
+  out of the browser gives
+  `https://supabase.com/dashboard/project/<ref>`, which serves an HTML
+  login page. `agents/supabase_client.py` rejects it at startup with a
+  message naming the problem; the run store used to surface it much
+  later as `TypeError: string indices must be integers`. The value you
+  want is `https://<ref>.supabase.co`.
+- **A placeholder key.** Every key in `.env.example` ships with a
+  `your-…` value. `agents/config.py` treats those as unset, so a source
+  or classifier is skipped rather than making requests that all come
+  back 401.
 
 `SUPABASE_URL` is the API endpoint, not the dashboard page. A dashboard
 URL returns an HTML login page, which surfaces as a confusing
@@ -247,7 +464,23 @@ fails if the deployed schema and the code drift apart.
 
 ## Known limitations and next steps
 
-- **No per-stage timeout.** An agent that hangs holds up its run.
+- **Three stages are still stubs.** Sentiment has a standalone script
+  that is not wired in; stance and aggregation have no implementation.
+  See [Which agents are real](#which-agents-are-real).
+- **The topic stage only runs where its model file has been restored.**
+  Everywhere else it is a stub, so `topic_results` only grows from runs
+  on a machine that has the file.
+- **The security filter's quarantine decisions are not stored anywhere
+  queryable** by the pipeline, and the filter misses full names (1 of
+  45 adversarial cases).
+- **A collection retry after a late failure collects nothing.** If the
+  stage fails after storing its articles (the LLM check, say), the
+  retry finds them all already stored and returns no articles, so the
+  run finishes early as if there were no news.
+- **No per-stage timeout.** An agent that hangs holds up its run. This
+  matters more now than it did with stubs: collection downloads article
+  pages one second apart, and the LLM classifier makes one call per
+  article.
 - **Runs live inside the Flask process.** If the server stops mid-run,
   that run stays at `running`. A startup check that marks stale runs as
   `failed` would fix this. With Supabase this also blocks the next run,
@@ -277,10 +510,26 @@ fails if the deployed schema and the code drift apart.
    security contracts.
 3. **Add `run_id` to the four results tables?** It would let us filter
    results by run and clean up a failed run's partial output. Commented
-   out at the bottom of `pipeline_tables.sql`.
+   out at the bottom of `pipeline_tables.sql`. Now that real agents
+   write real rows, this is the difference between "243 topic results"
+   and "243 topic results, from which runs".
 4. **Stage names — resolved.** The SQL adds `security` and `stance` to
    the original proposal and names the last stage `aggregation` rather
    than `aggregate`. The deployed table had never been updated to match;
    the migration in `supabase/migrations/` has now been applied and runs
    record all seven stages. See
    [Supabase run store](#supabase-run-store).
+5. **Where do quarantine decisions go?** Security screening drops
+   articles from `approved_ids` and logs why, but nothing records it.
+   A `quarantined_content` table now exists in the database, and
+   `agents/security/quarantine.py` writes to it over a direct Postgres
+   connection, while the pipeline only has the Supabase client. Picking
+   one path, and committing a migration for the table, would make "what
+   did screening reject last night, and was it right?" answerable.
+   Needed before anyone trusts the filter's false-positive rate.
+6. **Should screening write back the redacted text?** The filter
+   already produces it; analysis agents currently read the unredacted
+   `clean_content`. Writing it to a new column would mean PII never
+   reaches the analysis stages, at the cost of a column and a decision
+   about which text is canonical.
+

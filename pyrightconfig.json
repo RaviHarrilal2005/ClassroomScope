@@ -1,0 +1,33 @@
+{
+  // Run with `python -m pyright backend/` from the repo root.
+  // See backend/requirements-dev.txt.
+
+  // backend/ is on sys.path at runtime (conftest.py adds it, and the app
+  // starts from there), so `orchestrator` and `agents` are top-level.
+  "extraPaths": ["backend"],
+
+  "exclude": [
+    "**/.*",
+    "**/__pycache__",
+    "**/node_modules",
+    ".venv",
+
+    // agents/topic is the BERTopic model. Checking it needs bertopic,
+    // sentence-transformers and umap-learn installed (~2GB with torch);
+    // without them every line touching those libraries is an unresolved
+    // import. The pipeline imports it only inside TopicAgent.run(), and
+    // agents/topic/test_saved_model.py covers its logic without the stack.
+    "backend/agents/topic",
+
+    // agents/sentiment is a standalone script the pipeline does not run:
+    // it loads its models and reads a CSV export as soon as it is
+    // imported. Its transformers and vaderSentiment dependencies are not
+    // in requirements.txt.
+    "backend/agents/sentiment"
+  ],
+
+  // psycopg2 is optional: only agents/security/filter_validation.py needs
+  // it, and that is a reporting script, not part of a run. A missing stub
+  // for an optional dependency is worth a warning, not an error.
+  "reportMissingModuleSource": "warning"
+}

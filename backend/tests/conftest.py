@@ -12,6 +12,19 @@ from orchestrator import InMemoryRunStore, PipelineCoordinator, build_default_re
 
 
 
+@pytest.fixture(autouse=True)
+def no_dotenv(monkeypatch):
+    """
+    Keep backend/.env out of the test suite.
+
+    agents/config.py loads it on every credential read, so without this
+    a test that clears a variable gets it straight back from the file,
+    and the suite's behaviour depends on whose machine it runs on. Tests
+    that care about a credential set it with monkeypatch.setenv.
+    """
+    monkeypatch.setattr("agents.config.load_env", lambda: None)
+
+
 @pytest.fixture
 def sleeps():
     """Backoff delays the coordinator asked for — recorded instead of actually waited."""
@@ -28,7 +41,10 @@ def make_coordinator(sleeps):
     """
 
     def factory(agents=None, fallbacks=None, policies=None, store=None):
-        registry = build_default_registry()
+        # live=False pins the stubs: the suite must behave the same on a
+        # machine with Supabase credentials in backend/.env as on one
+        # without, and must never touch the network.
+        registry = build_default_registry(live=False)
         agents, fallbacks = agents or {}, fallbacks or {}
         for stage in set(agents) | set(fallbacks):
             primary = agents.get(stage, registry.get(stage))

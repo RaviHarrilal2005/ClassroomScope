@@ -5,14 +5,35 @@ This is the one place that changes when a teammate's real agent is
 ready — swap the stub for the real class in build_default_registry().
 The coordinator never imports specific agents, so adding or replacing
 an agent doesn't touch the sequencing code.
+
+The real agents live in backend/agents/; the Agent subclasses the
+coordinator calls are in agents/adapters.py. They are imported inside
+build_default_registry() rather than at module scope, so importing this
+module never reaches for Supabase credentials.
 """
 from __future__ import annotations
 
+import importlib.util
+import logging
+from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 from . import agents
 from .agents import Agent
-from .stages import AGGREGATION, ANALYSIS_STAGES, COLLECTION, SECURITY, SENTIMENT, TOPIC
+from .stages import (
+    AGGREGATION,
+    CLASSIFICATION,
+    COLLECTION,
+    SECURITY,
+    SENTIMENT,
+    STANCE,
+    TOPIC,
+)
+
+logger = logging.getLogger(__name__)
+
+# Saved topic models: gitignored, restored by hand (agents/topic/TOPIC_IDENTITY.md).
+TOPIC_MODELS = Path(__file__).resolve().parents[1] / "agents" / "topic" / "models"
 
 
 class AgentRegistry:
@@ -40,25 +61,99 @@ class AgentRegistry:
         return [s for s in stages if s not in self._primary]
 
 
-def build_default_registry() -> AgentRegistry:
+def build_default_registry(live: Optional[bool] = None, **collection_options) -> AgentRegistry:
     """
-    Current wiring: every stage is a stub until its owner's agent is ready.
+    Which agent runs each stage.
 
-    To plug in a real agent, replace its line, e.g.:
-        registry.register(SENTIMENT, SentimentAgent(),
-                          fallback=LexiconSentimentAgent())
+    live=True  use the team's real agents where they exist. They read and
+               write Supabase, so this needs credentials.
+    live=False stubs everywhere. No database, no network.
+    live=None  (default) decide from the environment: real agents when
+               Supabase is configured, stubs otherwise. That keeps
+               `python run_pipeline.py` and the tests working on a
+               machine with no .env, while a configured deployment gets
+               the real pipeline without a code change.
+
+    Stages with no agent the pipeline can call stay stubbed whatever
+    `live` says -- see agents/adapters.py for which is which.
+
+    collection_options are passed to CollectionAgent (backlog=True,
+    preprocess_limit=..., sources=[...]).
     """
     registry = AgentRegistry()
-    registry.register(COLLECTION, agents.stub_collection())    # TODO: real collection agent
-    registry.register(SECURITY, agents.stub_security())        # TODO: real screening agent
-    for stage in ANALYSIS_STAGES:                              # TODO: real analysis agents
-        fallback = agents.stub_fallback(stage) if stage == SENTIMENT else None
-        if stage == TOPIC:
-            # The topic agent reads approved article IDs from RunContext and
-            # writes topic_results itself, following the agent contract.
-            from topic_model_agent.topic_model import TopicAgent
-            registry.register(stage, TopicAgent())
+
+    if live is None:
+        from agents.supabase_client import is_configured
+
+        live = is_configured()
+
+    if live:
+        from agents.adapters import ClassificationAgent, CollectionAgent, SecurityAgent, TopicAgent
+
+        logger.info("Registry: real agents for collection, security and classification")
+        registry.register(COLLECTION, CollectionAgent(**collection_options))
+        registry.register(SECURITY, SecurityAgent())
+        # The LLM classifier is better but needs a reachable endpoint, so
+        # it runs as primary only when it is configured, with the keyword
+        # scorer behind it. Without credentials the keyword scorer is the
+        # primary and there is nothing to fall back from.
+        if _luna_configured():
+            registry.register(CLASSIFICATION, ClassificationAgent("luna"),
+                              fallback=ClassificationAgent("baseline"))
         else:
-            registry.register(stage, agents.stub_analysis(stage), fallback=fallback)
-    registry.register(AGGREGATION, agents.stub_aggregation())  # TODO: real results aggregator
+            logger.info("Registry: TRUSSED_API_KEY not set, using the keyword classifier")
+            registry.register(CLASSIFICATION, ClassificationAgent("baseline"))
+        # Where the topic model cannot run, the stage would fail on every
+        # run, so it stays stubbed until BERTopic and a saved model are here.
+        if _topic_model_available():
+            logger.info("Registry: saved topic model found, using the topic agent")
+            registry.register(TOPIC, TopicAgent())
+        else:
+            logger.info("Registry: no saved topic model or no BERTopic, topic stays stubbed")
+            registry.register(TOPIC, agents.stub_analysis(TOPIC))
+    else:
+        logger.info("Registry: stub agents (Supabase not configured)")
+        registry.register(COLLECTION, agents.stub_collection())
+        registry.register(SECURITY, agents.stub_security())
+        registry.register(CLASSIFICATION, agents.stub_analysis(CLASSIFICATION))
+        registry.register(TOPIC, agents.stub_analysis(TOPIC))
+
+    # Nothing the pipeline can call yet: sentiment is a standalone script
+    # (agents/sentiment/), and stance has no implementation.
+    registry.register(SENTIMENT, agents.stub_analysis(SENTIMENT),
+                      fallback=agents.stub_fallback(SENTIMENT))
+    registry.register(STANCE, agents.stub_analysis(STANCE))
+    registry.register(AGGREGATION, agents.stub_aggregation())
     return registry
+
+
+def _luna_configured() -> bool:
+    """
+    Whether the LLM classifier has real credentials.
+
+    optional_key loads backend/.env itself. Reading os.environ directly
+    only works when something else happened to load it first, which
+    build_default_registry(live=True) does not -- so `--live` silently
+    fell back to the keyword scorer however good the key was.
+
+    A .env copied from .env.example has TRUSSED_API_KEY set to a
+    placeholder. Treating that as configured makes the LLM classifier
+    the primary agent, so every run burns its retries on a 401 before
+    falling back. A placeholder means unset.
+    """
+    from agents.config import optional_key
+
+    return bool(optional_key("TRUSSED_API_KEY") and optional_key("TRUSSED_BASE_URL"))
+
+
+def _topic_model_available() -> bool:
+    """
+    Whether the topic stage can run here: BERTopic is installed and a
+    saved model has been restored to TOPIC_MODELS.
+
+    Most machines have neither. The model is gitignored and restored by
+    hand, and BERTopic is ~2GB. Checked without importing BERTopic.
+    Whether the file is the right model is the topic module's own check,
+    which fails the stage loudly rather than train a replacement.
+    """
+    return importlib.util.find_spec("bertopic") is not None and any(TOPIC_MODELS.glob("*.pkl"))

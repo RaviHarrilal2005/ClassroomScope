@@ -28,8 +28,8 @@ building out the real views.
 
 ## What's NOT built yet
 
-- FilterPanel, real charts (VisualizationViews), ExportControls,
-  AdminConsole — see design doc Section 2 for what each needs to do
+- FilterPanel and ExportControls — see design doc Section 2 for what
+  each needs to do
 - Auth / session context (SS-5 login) — apiClient has TODOs where the
   token will attach
 - Run-status poller
@@ -44,14 +44,23 @@ and records each stage's status. It retries collection, skips analysis
 if security screening fails, uses a fallback when sentiment fails, and
 keeps the results of stages that succeeded when another fails.
 
-- Agents are **stubs** for now; owners plug in real agents in
-  `backend/orchestrator/registry.py`
+- **Four of the seven agents are real**: collection (news APIs + RSS,
+  dedupe, keyword then LLM relevance check, body extraction), security
+  (content sanitization screening), classification (stakeholder and
+  source type) and topic (a saved BERTopic model, whose file is restored
+  by hand; where it is missing, topic stays a stub). Sentiment exists as
+  a standalone script that is not wired in
+  yet; stance and aggregation have no implementation. Each owner's code
+  lives in `backend/agents/<stage>/`.
+- The registry picks real agents when Supabase is configured and stubs
+  otherwise, so the app and the tests still work without credentials.
 - Run status is written to **Supabase** (`pipeline_runs` /
   `pipeline_stage_runs`) when `SUPABASE_URL` and `SUPABASE_KEY` are set,
   and kept in memory otherwise, so the app still starts without
   credentials. Every store method is verified against the real database.
-- Verified end to end against the real database: a full run records all
-  seven stages, finishing `completed`. Note `POST /api/v1/runs` returns
+- Verified end to end against the real database: a full run over 40 real
+  articles records all seven stages, finishing `completed`. Note
+  `POST /api/v1/runs` returns
   `202` straight away and the pipeline continues on a background thread,
   so polling immediately shows `running` with stages still `pending` —
   that is normal, not a stall.
@@ -70,17 +79,29 @@ cp .env.example .env      # then fill in SUPABASE_KEY
 python app.py             # serves http://localhost:5000
 ```
 
-`backend/.env` holds `SUPABASE_URL` and `SUPABASE_KEY`; it is gitignored
-and must never be committed. Use the **secret** (`sb_secret_…`) key — the
-publishable key has no write access to the run tables. Without a `.env`
-the backend still runs, but keeps run status in memory only.
+`backend/.env` holds the credentials; it is gitignored and must never be
+committed. `SUPABASE_URL` must be the **API endpoint**
+(`https://<ref>.supabase.co`), not the dashboard page, and `SUPABASE_KEY`
+should be the **secret** (`sb_secret_…`) key — the publishable key has no
+write access to the run tables. Without a `.env` the backend still runs,
+but keeps run status in memory only.
+
+The news-API keys in `.env.example` are optional: a source with no real
+key is skipped, and an unfilled placeholder counts as no key. The
+`TRUSSED_*` LLM keys are needed to collect new articles, since an
+article is only kept once the LLM confirms it is relevant; without them
+a live collection run fails up front, and classification falls back to
+its keyword scorer. `--backlog` runs need neither.
 
 **Pipeline demo and tests** (from `backend`)
 ```
 pip install -r requirements-dev.txt
-python run_pipeline.py              # run the pipeline once, print each stage
-python run_pipeline.py --fail topic # see how a failing agent is handled
-python -m pytest tests              # run the test suite
+python run_pipeline.py                   # run once with stubs, print each stage
+python run_pipeline.py --fail topic      # see how a failing agent is handled
+python run_pipeline.py --live --backlog  # the real agents, over articles already
+                                         # stored (no API quota, no downloads)
+python -m pytest tests agents/topic      # run the test suite (98 tests)
+python -m pyright backend/               # type check (from the repo root)
 ```
 
 **Front end** (separate terminal)
@@ -96,10 +117,9 @@ the Flask stub, not placeholder text.
 ## Next steps (planned)
 
 1. Build FilterPanel and wire it into ViewStateContext
-2. Swap the plain HTML list/table for a real charting library
-3. Connect apiClient to the real Data Access Layer once SS-1/SS-2/SS-3
+2. Connect apiClient to the real Data Access Layer once SS-1/SS-2/SS-3
    are integrated (see WBS, tasks under 4.5)
-4. Add auth context once SS-5 login exists
+3. Add auth context once SS-5 login exists
 
 ## This week: initial site design refinement
 
@@ -116,9 +136,10 @@ layer rather than fetching independently.
 1. **FilterPanel** — controls for narrowing the results shown in
    `DashboardShell`. Should read/write filter state via
    `ViewStateContext.jsx` rather than owning its own state.
-2. **VisualizationViews** — replace the plain sentiment
-   breakdown/article list in `DashboardShell.jsx` with real charts.
-   Pick a charting library as a team before splitting up chart types.
+2. **VisualizationViews** — built (`VisualizationViews.jsx`, using
+   Recharts): a sentiment donut and a top-topics bar chart. New chart
+   types should use Recharts too. The article list stays a table: a
+   chart of a handful of rows would present a sample as a distribution.
 3. **ExportControls** — UI for exporting the current view/results
    (format TBD — propose an approach if it's not obvious from the
    design doc).

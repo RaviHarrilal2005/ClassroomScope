@@ -46,10 +46,10 @@ numbers do not inherit T001–T005. Review and map candidate themes before using
 them as permanent topics. Normal runs keep using the current registered model.
 This command does not add continual discovery, a discovery pool, or source screening.
 
-Run from the project folder:
+Run from `backend/`:
 
 ```bash
-.venv/bin/python topic_model_agent/topic_model.py
+python -m agents.topic.topic_model
 ```
 
 Deleting previous results allows eligible articles to receive new assignments
