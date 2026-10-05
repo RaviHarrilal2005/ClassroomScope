@@ -15,7 +15,7 @@
  *   * Only one run may be active. A second POST returns 409 with the
  *     active run's id; the store switches to that run rather than just
  *     showing an error.
- *   * Four of the seven stages are stubs (sentiment, topic, stance,
+ *   * Three of the seven stages are stubs (sentiment, stance,
  *     aggregation). They succeed in about a millisecond without doing
  *     anything, which looks identical to real work from here — hence the
  *     note under the stage table.
@@ -32,10 +32,13 @@ import {
   formatTime,
 } from "./statusStyles";
 
-// Stages with no implementation on any branch, plus topic, which works
-// standalone but is not wired in. Flagged so nobody reads "succeeded"
-// as "analysed something".
-const STUBBED_STAGES = ["sentiment", "topic", "stance", "aggregation"];
+// Stages that are stubs everywhere today: sentiment is a standalone
+// script the pipeline can't call yet, and stance and aggregation have
+// no implementation. Flagged so nobody reads "succeeded" as "analysed
+// something". Topic is left out: it runs for real wherever its model
+// was pulled with Git LFS. Where it wasn't, topic is a stub this list
+// can't see; the fix is for the backend to report which agent ran.
+const STUBBED_STAGES = ["sentiment", "stance", "aggregation"];
 
 const card = {
   border: "1px solid #DDD",
