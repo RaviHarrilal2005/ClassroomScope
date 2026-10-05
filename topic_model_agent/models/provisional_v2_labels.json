@@ -1,0 +1,12 @@
+{
+  "model_file": "provisional_topic_model_v2.pkl",
+  "labels": {
+    "-1": "Unassigned",
+    "0": "AI adoption and its effects on learning",
+    "1": "School AI restrictions, privacy, and policy",
+    "2": "Classroom AI implementation and teacher practice",
+    "3": "Academic integrity, cheating, and AI detection",
+    "4": "AI literacy and educational resources"
+  },
+  "review_basis": "Keywords and three representative excerpts per topic; provisional descriptions, not full-corpus validation."
+}

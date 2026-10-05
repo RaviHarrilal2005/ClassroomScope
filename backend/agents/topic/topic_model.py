@@ -18,7 +18,6 @@ DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "provisional_t
 TOPIC_CATALOG_PATH = Path(__file__).resolve().parent / "topic_catalog.json"
 
 def get_model_registration(model_path):
-    """Require an exact registered model; never silently train a replacement."""
     if not model_path.is_file():
         raise ValueError("Saved topic model is missing. Restore it before running analysis.")
     catalog = json.loads(TOPIC_CATALOG_PATH.read_text())
@@ -44,7 +43,6 @@ def get_database():
     return get_client()
 
 def save_topic_results(results):
-    """Insert new article assignments and preserve historical results."""
     if results.empty:
         return 0
     records = results.astype(object).where(results.notna(), None).to_dict(orient="records")
