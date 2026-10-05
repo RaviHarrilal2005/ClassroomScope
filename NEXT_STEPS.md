@@ -101,8 +101,10 @@ Results go in the `stance_results` table.
 ## 3. Aggregation (Ravi, after sentiment)
 
 Aggregation turns the analysis tables into the numbers the dashboard
-shows. Until it exists, `/api/v1/results` returns sample data, which is
-why the charts have a yellow "Placeholder figures" note. The plan is
+shows. The topic chart is already real: `/api/v1/results` counts
+`topic_results` directly. Sentiment and the article list are still
+sample data, which is why they have a yellow "Placeholder figures"
+note. The plan is
 already written in
 [docs/superpowers/plans/2026-09-29-aggregation-agent.md](docs/superpowers/plans/2026-09-29-aggregation-agent.md).
 Work starts once sentiment is connected, so there are real sentiment

@@ -3,8 +3,9 @@
  *
  * This is the one dashboard view backed by real data today. It reads
  * pipeline_runs and pipeline_stage_runs through the run endpoints, which
- * return genuine rows; the results views above it are still rendering the
- * hardcoded /results payload, because no aggregation agent exists yet.
+ * return genuine rows. Of the results views above it, only top topics is
+ * real so far; sentiment and articles still render hardcoded /results
+ * data, because no aggregation agent exists yet.
  *
  * Three things the backend does that this UI has to account for:
  *

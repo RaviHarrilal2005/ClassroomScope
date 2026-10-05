@@ -4,7 +4,8 @@ ClassroomScope API Gateway (SS-4) — entry point.
 STATUS:
   * /api/v1/runs  — pipeline coordinator endpoints (sequencing built,
                     agents are stubs until each owner's agent is ready)
-  * /api/v1/results — still a hardcoded stub for the dashboard
+  * /api/v1/results — top_topics is counted live from topic_results;
+                      sentiment and articles are still a hardcoded stub
   * The run store is Supabase when SUPABASE_URL / SUPABASE_KEY are set,
     in-memory otherwise — see build_run_store() below.
   * Auth and the real data access layer are NOT connected yet — see the
@@ -26,6 +27,7 @@ from orchestrator import (
 )
 from orchestrator.routes import create_runs_blueprint
 from orchestrator.supabase_store import SupabaseRunStore
+from orchestrator.topic_counts import reader_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +63,11 @@ def build_run_store():
     return SupabaseRunStore.from_env()
 
 
-def create_app(runner=None):
+def create_app(runner=None, read_topics=None):
     """
-    Build the Flask app. Tests pass in their own runner; normal startup
-    builds the default one (stub agents + in-memory run store).
+    Build the Flask app. Tests pass in their own runner and topic reader;
+    normal startup builds the defaults (agents and run store from the
+    environment, topic counts from topic_results when Supabase is set).
     """
     app = Flask(__name__)
     CORS(app)  # TODO: restrict origins before this leaves localhost
@@ -72,6 +75,8 @@ def create_app(runner=None):
     if runner is None:
         coordinator = PipelineCoordinator(build_default_registry(), build_run_store())
         runner = BackgroundRunner(coordinator)
+    if read_topics is None:
+        read_topics = reader_from_env()
     app.register_blueprint(create_runs_blueprint(runner))
 
     @app.get("/api/v1/health")
@@ -82,17 +87,19 @@ def create_app(runner=None):
     @app.get("/api/v1/results")
     def get_results():
         """
-        Stub results endpoint.
+        Results for the dashboard, partly real.
 
-        Returns hardcoded data shaped like what the real Aggregation
-        Service (see design doc, Section 6.5) will eventually produce,
-        so the front end can be built against a stable contract before
-        the real pipeline exists.
+        top_topics is counted from topic_results on each request, in the
+        shape the aggregation snapshot will use (see orchestrator/
+        topic_counts.py). sentiment_distribution and articles are still
+        hardcoded, shaped like what the real Aggregation Service (design
+        doc, Section 6.5) will produce, so the front end can be built
+        against a stable contract before the real pipeline exists.
 
         TODO:
           - accept filter query params (date range, source, topic)
-          - replace hardcoded payload with a real call to the
-            Data Access Layer once the Core Database is connected
+          - replace the hardcoded parts with real aggregates once the
+            aggregation agent exists
           - add auth check once Session/Auth Context (SS-5) is wired in
         """
         return jsonify({
@@ -101,11 +108,7 @@ def create_app(runner=None):
                 "neutral": 0.23,
                 "negative": 0.22,
             },
-            "top_topics": [
-                {"label": "Academic integrity", "count": 42},
-                {"label": "Classroom AI tools", "count": 35},
-                {"label": "Policy & regulation", "count": 21},
-            ],
+            "top_topics": read_topics(),
             "articles": [
                 {
                     "id": "stub-1",

@@ -6,9 +6,10 @@
  * auth headers, error handling, and response parsing live in one place.
  *
  * STATUS:
- *   - getResults() is wired to the /results endpoint, which still serves
- *     hardcoded data — the aggregation agent that would fill it does not
- *     exist yet. Treat anything it returns as placeholder.
+ *   - getResults() is wired to the /results endpoint. Its top_topics is
+ *     real, counted from topic_results, and says when it is unavailable;
+ *     sentiment and articles are still hardcoded until the aggregation
+ *     agent exists. Treat those two as placeholder.
  *   - The run endpoints below are real: they read pipeline_runs and
  *     pipeline_stage_runs, and return genuine rows.
  *   - Auth token attachment, retries, and export calls are NOT built yet.

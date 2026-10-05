@@ -2,9 +2,9 @@
  * Visualization Views — the dashboard's charts (Section 2 of design doc).
  *
  * Each chart takes plain data rather than the /results payload, so the
- * caller decides what to draw. Today that is the stub's figures; once
- * the aggregation snapshot replaces the stub, its topics sit under
- * `top_topics.items` instead of `top_topics`.
+ * caller decides what to draw: the sentiment shares are still the stub's,
+ * while the topics are real counts from `top_topics.items`, the same
+ * shape the aggregation snapshot will use.
  *
  * Every value is printed on the chart as text, so colour is never the
  * only signal — the same rule statusStyles.js follows for badges.
@@ -56,11 +56,12 @@ export function SentimentDonut({ distribution }) {
 /** [{ label, count }] as horizontal bars, in the order given. */
 export function TopTopicsBar({ topics }) {
   return (
-    <div style={{ maxWidth: "640px" }}>
+    <div style={{ maxWidth: "760px" }}>
       <ResponsiveContainer width="100%" height={topics.length * 44 + 10}>
         <BarChart data={topics} layout="vertical" margin={{ right: 40 }} accessibilityLayer={false}>
           <XAxis type="number" hide />
-          <YAxis type="category" dataKey="label" width={170} />
+          {/* Sized to the longest label: real topic names run to ~50 characters. */}
+          <YAxis type="category" dataKey="label" width="auto" />
           <Bar dataKey="count" fill={BLUE.fg}>
             <LabelList dataKey="count" position="right" />
           </Bar>
