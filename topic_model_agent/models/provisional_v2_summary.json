@@ -1,0 +1,11 @@
+{
+  "loaded": 265,
+  "eligible": 265,
+  "excluded_ineligible": 0,
+  "excluded_blank_text": 0,
+  "excluded_source_review": 0,
+  "duplicates_removed": 5,
+  "analyzed": 260,
+  "assigned": 172,
+  "unassigned": 88
+}
