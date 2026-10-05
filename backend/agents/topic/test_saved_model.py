@@ -28,7 +28,9 @@ def test_inference_filters_and_supports_single_article():
     model.get_topic_info.return_value = pd.DataFrame({"Topic": [-1, 0]})
     model.transform.return_value = ([0], None)
     model.get_topic.return_value = [("assessment", 1)]
+    repair = Mock()
     scope.update(DEFAULT_MODEL_PATH=Path("model.pkl"), BERTopic=SimpleNamespace(load=Mock(return_value=model)),
+                 use_installed_umap_functions=repair,
                  get_model_registration=Mock(return_value={"version": "v1", "labels": {"0": "Integrity"},
                                                           "topic_mapping": {"0": "T004"}}))
     base = dict(id=1, content_hash="hash", clean_content="Article text", is_relevant=True,
@@ -41,6 +43,27 @@ def test_inference_filters_and_supports_single_article():
     assert result.stable_topic_id.tolist() == ["T004"]
     model.transform.assert_called_once_with(["Article text"])
     model.fit_transform.assert_not_called()
+    repair.assert_called_once_with(model)
+
+
+def test_loaded_model_uses_this_machines_umap_distance_functions():
+    """
+    The pickle carries copies of umap's numba distance functions compiled
+    for the Python that trained it (3.12). On another Python version numba
+    cannot compile them and transform fails: "IndexError: pop from empty list".
+    """
+    scope = functions()
+    def cosine(): pass
+    def cosine_grad(): pass
+    def euclidean_grad(): pass
+    umap_model = SimpleNamespace(_input_distance_func=SimpleNamespace(py_func=cosine),
+                                 _inverse_distance_func=SimpleNamespace(py_func=cosine_grad),
+                                 _output_distance_func=SimpleNamespace(py_func=euclidean_grad))
+    installed = SimpleNamespace(cosine=object(), cosine_grad=object(), euclidean_grad=object())
+    scope["use_installed_umap_functions"](SimpleNamespace(umap_model=umap_model), installed)
+    assert umap_model._input_distance_func is installed.cosine
+    assert umap_model._inverse_distance_func is installed.cosine_grad
+    assert umap_model._output_distance_func is installed.euclidean_grad
 
 
 def test_save_preserves_rows_and_reports_actual_insertions():
@@ -83,6 +106,7 @@ def test_missing_or_changed_model_cannot_trigger_training():
 def load_tests(loader, tests, pattern):
     return unittest.TestSuite(unittest.FunctionTestCase(test) for test in (
         test_inference_filters_and_supports_single_article,
+        test_loaded_model_uses_this_machines_umap_distance_functions,
         test_save_preserves_rows_and_reports_actual_insertions,
         test_missing_or_changed_model_cannot_trigger_training,
     ))

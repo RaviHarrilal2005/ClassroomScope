@@ -86,6 +86,23 @@ def load_articles(article_ids=None, page_size=500):
 
     return pd.DataFrame(records)
 
+def use_installed_umap_functions(topic_model, distances=None):
+    """Swap the pickle's copies of umap's distance functions for the installed ones.
+
+    The saved model carries umap's numba distance functions compiled for the
+    Python that trained it (3.12). On any other Python version numba cannot
+    compile that bytecode and transform fails with "IndexError: pop from empty
+    list". The installed functions are the same code built for this Python, so
+    the model's topics do not change.
+    """
+    if distances is None:
+        import umap.distances as distances
+    umap_model = topic_model.umap_model
+    for attr in ("_input_distance_func", "_inverse_distance_func", "_output_distance_func"):
+        func = getattr(umap_model, attr, None)
+        if func is not None:
+            setattr(umap_model, attr, getattr(distances, func.py_func.__name__))
+
 def analyze_topics(articles, topic_count=None, model_path=None):
     """Assign articles with a saved model. topic_count is retained for caller compatibility.
 
@@ -109,6 +126,7 @@ def analyze_topics(articles, topic_count=None, model_path=None):
     model_path = Path(model_path) if model_path is not None else DEFAULT_MODEL_PATH
     registration = get_model_registration(model_path)
     topic_model = BERTopic.load(str(model_path))
+    use_installed_umap_functions(topic_model)
     topic_info = topic_model.get_topic_info().set_index("Topic")
     known_topics = {str(topic) for topic in topic_info.index if topic != -1}
     if known_topics != set(registration["topic_mapping"]):
