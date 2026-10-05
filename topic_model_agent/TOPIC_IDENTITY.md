@@ -20,8 +20,31 @@ The topic_count argument is kept for compatibility with the orchestrator but
 does not change a saved model. Future training must be a separate, deliberate
 operation, saved under a new filename and version. Review each new cluster before
 mapping it to an existing permanent topic ID or allocating a new one. Never
-reuse the old cluster numbers as evidence of topic identity. No new training
-command is introduced in this step because the existing trained model is available.
+reuse the old cluster numbers as evidence of topic identity.
+
+## Separate automatic discovery training
+
+`train_auto.py` deliberately trains a candidate using `nr_topics=None`: the
+clustering chooses the number of topics. The minimum topic size defaults to 10;
+it is a cluster-size setting, not a request for exactly ten topics. Automatic
+discovery may find fewer or more topics than the existing model, or no clusters.
+
+When ready to train, run from the project folder:
+
+```bash
+.venv/bin/python topic_model_agent/train_auto.py --version auto-v1
+```
+
+Outputs are saved in a new `models/auto-v1/` directory: `model.pkl`, `topics.csv`,
+`assignments.csv`, and `training.json`. Existing candidate directories cannot be
+overwritten. A failed attempt keeps its directory and marks its manifest failed;
+use a new name for a retry. Training can download the embedding model if it is
+not cached. It reads eligible articles from Supabase but performs no database writes.
+
+The candidate is not automatically registered or activated. Its internal topic
+numbers do not inherit T001–T005. Review and map candidate themes before using
+them as permanent topics. Normal runs keep using the current registered model.
+This command does not add continual discovery, a discovery pool, or source screening.
 
 Run from the project folder:
 
