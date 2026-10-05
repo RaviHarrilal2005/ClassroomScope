@@ -32,8 +32,10 @@ from .stages import (
 
 logger = logging.getLogger(__name__)
 
-# Saved topic models: gitignored, restored by hand (agents/topic/TOPIC_IDENTITY.md).
+# Saved topic models, stored with Git LFS (agents/topic/TOPIC_IDENTITY.md).
 TOPIC_MODELS = Path(__file__).resolve().parents[1] / "agents" / "topic" / "models"
+# What a file checked out without Git LFS starts with, in place of the model.
+LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
 
 
 class AgentRegistry:
@@ -148,12 +150,29 @@ def _luna_configured() -> bool:
 
 def _topic_model_available() -> bool:
     """
-    Whether the topic stage can run here: BERTopic is installed and a
-    saved model has been restored to TOPIC_MODELS.
+    Whether the topic stage can run here: BERTopic is installed and the
+    saved model is in TOPIC_MODELS.
 
-    Most machines have neither. The model is gitignored and restored by
-    hand, and BERTopic is ~2GB. Checked without importing BERTopic.
-    Whether the file is the right model is the topic module's own check,
-    which fails the stage loudly rather than train a replacement.
+    The model is stored with Git LFS. A clone made without Git LFS has a
+    small pointer file in its place, which the topic module would reject
+    on every run with a checksum error, so a pointer counts as no model.
+    BERTopic is ~2GB, and is checked for without being imported. Whether
+    the file is the right model is the topic module's own check, which
+    fails the stage loudly rather than train a replacement.
     """
-    return importlib.util.find_spec("bertopic") is not None and any(TOPIC_MODELS.glob("*.pkl"))
+    if importlib.util.find_spec("bertopic") is None:
+        return False
+    models = list(TOPIC_MODELS.glob("*.pkl"))
+    pointers = [m for m in models if _is_lfs_pointer(m)]
+    if pointers:
+        logger.warning(
+            "Registry: %s is a Git LFS pointer, not the model. "
+            "Install Git LFS and run `git lfs pull` to download it.",
+            ", ".join(p.name for p in pointers),
+        )
+    return len(pointers) < len(models)
+
+
+def _is_lfs_pointer(path: Path) -> bool:
+    with path.open("rb") as f:
+        return f.read(len(LFS_POINTER)) == LFS_POINTER

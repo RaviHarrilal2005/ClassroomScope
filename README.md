@@ -47,8 +47,8 @@ keeps the results of stages that succeeded when another fails.
 - **Four of the seven agents are real**: collection (news APIs + RSS,
   dedupe, keyword then LLM relevance check, body extraction), security
   (content sanitization screening), classification (stakeholder and
-  source type) and topic (a saved BERTopic model, whose file is restored
-  by hand; where it is missing, topic stays a stub). Sentiment exists as
+  source type) and topic (a saved BERTopic model, stored in the repo with
+  Git LFS; where it is missing, topic stays a stub). Sentiment exists as
   a standalone script that is not wired in
   yet; stance and aggregation have no implementation. Each owner's code
   lives in `backend/agents/<stage>/`.
@@ -78,6 +78,10 @@ pip install -r requirements.txt
 cp .env.example .env      # then fill in SUPABASE_KEY
 python app.py             # serves http://localhost:5000
 ```
+
+The topic model (441 MB) is stored with [Git LFS](https://git-lfs.com).
+Install it before cloning or pulling, or run `git lfs pull` afterwards;
+without it you get a small pointer file and topic stays a stub.
 
 `backend/.env` holds the credentials; it is gitignored and must never be
 committed. `SUPABASE_URL` must be the **API endpoint**
