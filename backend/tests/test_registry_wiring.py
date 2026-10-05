@@ -91,8 +91,8 @@ def bertopic_installed(monkeypatch, installed):
 
 def test_topic_stays_stubbed_where_no_model_has_been_restored(monkeypatch, topic_models):
     """
-    The model file is gitignored and restored by hand. Without it the
-    stage fails on every run, and every run ends completed_with_errors.
+    Without the model file the stage fails on every run, and every run
+    ends completed_with_errors.
     """
     bertopic_installed(monkeypatch, True)
     assert isinstance(build_default_registry(live=True).get(TOPIC), StubAgent)
@@ -108,6 +108,24 @@ def test_topic_runs_where_bertopic_and_a_saved_model_are_present(monkeypatch, to
     bertopic_installed(monkeypatch, True)
     (topic_models / "provisional_topic_model_v2.pkl").write_bytes(b"saved model")
     assert isinstance(build_default_registry(live=True).get(TOPIC), TopicAgent)
+
+
+def test_a_git_lfs_pointer_is_not_mistaken_for_the_model(monkeypatch, topic_models, caplog):
+    """
+    The model is stored with Git LFS. Pulling without Git LFS leaves this
+    small pointer file where the model should be; taking it for the model
+    would fail the stage on every run with a checksum error.
+    """
+    bertopic_installed(monkeypatch, True)
+    (topic_models / "provisional_topic_model_v2.pkl").write_bytes(
+        b"version https://git-lfs.github.com/spec/v1\n"
+        b"oid sha256:679406f32ccf370459691c43f4337331f909aa79d0dee5152ce7bf61ec84e1b0\n"
+        b"size 441497055\n"
+    )
+    with caplog.at_level("WARNING", logger="orchestrator.registry"):
+        registry = build_default_registry(live=True)
+    assert isinstance(registry.get(TOPIC), StubAgent)
+    assert "git lfs pull" in caplog.text
 
 
 def test_sentiment_keeps_its_fallback():

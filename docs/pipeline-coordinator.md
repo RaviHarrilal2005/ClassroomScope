@@ -97,7 +97,7 @@ package without touching sequencing code.
 | Classification | **real** | `agents/classification/` — LLM classifier when `TRUSSED_API_KEY` is set, keyword scorer otherwise or as its fallback |
 | Sentiment | stub | `agents/sentiment/sentiment_agent.py` runs standalone over a CSV export — see below |
 | Stance | stub | no implementation on any branch yet |
-| Topic | **real** where its model is | `agents/topic/` — topics from a saved BERTopic model, whose file is restored by hand; a stub on machines without it — see below |
+| Topic | **real** where its model is | `agents/topic/` — topics from a saved BERTopic model, stored in the repo with Git LFS; a stub on machines without it — see below |
 | Aggregation | stub | not written yet |
 
 `build_default_registry(live=...)` chooses. `live=None` (the default)
@@ -187,12 +187,14 @@ during a run: the model file must match the checksum registered in
 assignments are kept, not overwritten. See
 `agents/topic/TOPIC_IDENTITY.md`.
 
-**The model file is not in the repo.** It is gitignored
-(`backend/agents/topic/models/`) and restored by hand. The registry uses
-the topic agent only where BERTopic is installed and a model file is in
-that folder; anywhere else topic stays a stub, as before, rather than
-fail every run. Restoring the file switches it on at the next start. A
-file whose checksum is not registered still fails the stage loudly.
+**The model file is stored with Git LFS** in
+`backend/agents/topic/models/` (441 MB), so Git LFS must be installed
+to get it. A clone made without Git LFS has a small pointer file there
+instead. The registry uses the topic agent only where BERTopic is
+installed and the real model file is in that folder; anywhere else,
+pointer included, topic stays a stub rather than fail every run, and a
+pointer logs a warning saying to run `git lfs pull`. A file whose
+checksum is not registered still fails the stage loudly.
 
 BERTopic and its stack (~2GB with torch) are in `requirements.txt`. The
 adapter imports the module only inside `run()`, so building the

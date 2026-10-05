@@ -425,11 +425,10 @@ class TopicAgent(Agent):
     That module loads BERTopic and its ML stack, and building the
     registry must not need any of it.
 
-    The registry only uses it where BERTopic is installed and a saved
-    model has been restored; the file is gitignored (see
-    agents/topic/TOPIC_IDENTITY.md). A file whose checksum is not
-    registered in topic_catalog.json still fails the stage: it never
-    trains a replacement.
+    The registry only uses it where BERTopic is installed and the saved
+    model has been pulled with Git LFS (see agents/topic/TOPIC_IDENTITY.md).
+    A file whose checksum is not registered in topic_catalog.json still
+    fails the stage: it never trains a replacement.
     """
 
     name = "topic"
