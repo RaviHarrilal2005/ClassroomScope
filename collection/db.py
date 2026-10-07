@@ -60,6 +60,9 @@ def _to_row(article):
         "url": article.get("url"),
         "content": article.get("content") or "",
         "content_hash": _content_hash(article.get("content")),
+	# Guardian-only fields; None for other sources.
+        "guardian_discussion_key": article.get("guardian_discussion_key"),
+        "guardian_commentable": article.get("guardian_commentable"),
     }
 
 
