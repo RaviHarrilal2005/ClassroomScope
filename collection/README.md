@@ -316,7 +316,7 @@ the runtime pipeline. Available to the Cross-Corpus Matcher and
 stance agent as a parallel public-discourse corpus.
 
 - `reddit_posts` — one row per Reddit submission (2,820 rows)
-- - `reddit_comments` — one row per comment, FK to post (39,597 rows)
+- `reddit_comments` — one row per comment, FK to post (39,597 rows)
 
 ## 8. Preconditions and pipeline ordering
 
