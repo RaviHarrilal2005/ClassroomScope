@@ -288,7 +288,7 @@ comments        → rows in comments (only on llm_relevant = TRUE AND processing
 
 ## 6. Database contract — `comments`
 
-**Read by:** Stance Detection Agent, Dashboard
+**Read by:** Stance Detection Agent, Dashboard\
 **Written by:** guardian_comments.run (upsert)
 
 | Column | Type | Notes |
@@ -310,13 +310,13 @@ comments        → rows in comments (only on llm_relevant = TRUE AND processing
   user IDs stored.
 - Blocked comments (`status != 'visible'`) are skipped entirely.
 
-~~## 7. Reddit tables~~
-~~Populated by the one-time `ingest_reddit` script. Not touched by~~
-~~the runtime pipeline. Available to the Cross-Corpus Matcher and~~
-~~stance agent as a parallel public-discourse corpus.~~
+## 7. Reddit tables (dormant)
+Populated by the one-time `ingest_reddit` script. Not touched by
+the runtime pipeline. Available to the Cross-Corpus Matcher and
+stance agent as a parallel public-discourse corpus.
 
-~~- `reddit_posts` — one row per Reddit submission (2,820 rows)~~
-~~- `reddit_comments` — one row per comment, FK to post (39,597 rows)~~
+- `reddit_posts` — one row per Reddit submission (2,820 rows)
+- - `reddit_comments` — one row per comment, FK to post (39,597 rows)
 
 ## 8. Preconditions and pipeline ordering
 
