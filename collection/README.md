@@ -327,7 +327,7 @@ Article branch:
 4. `llm_verify_relevance.run()` → `llm_relevant` set (on `is_relevant=TRUE`)
 5. `preprocess.run()`           → `processing_status` set (on `llm_relevant=TRUE`)
 
-Comment branch (runs after stage 5):
+Comment branch (runs after stage 5):\
 6. `guardian_comments.run()`    → comments row exist
 
 Stages are idempotent and self-filtering, so calling them out of
