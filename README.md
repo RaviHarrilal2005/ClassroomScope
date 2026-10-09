@@ -11,8 +11,9 @@ building out the real views.
 
 - Flask backend (`backend/app.py`) serving two endpoints:
   - `GET /api/v1/health` — reachability check
-  - `GET /api/v1/results` — stub data shaped like what the real
-    Aggregation Service will eventually return
+  - `GET /api/v1/results` — topic counts read live from
+    `topic_results`; the sentiment and article parts are still stub
+    data shaped like what the real Aggregation Service will return
 - React front end (`frontend/`) with the three layers from the design
   doc partially built:
   - **Data access layer** (`src/api/apiClient.js`) — the single client

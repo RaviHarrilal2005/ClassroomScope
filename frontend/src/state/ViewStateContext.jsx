@@ -5,8 +5,9 @@
  * from state instead of fetching data themselves.
  *
  * STATUS:
- *   - results + loading/error: works, but /results still serves hardcoded
- *     data (no aggregation agent yet).
+ *   - results + loading/error: works. /results counts top_topics from
+ *     topic_results; sentiment and articles are still hardcoded (no
+ *     aggregation agent yet).
  *   - run status + the run-status poller: real, reading pipeline_runs.
  *   - Does NOT yet hold active filters (TODO, needs FilterPanel).
  */

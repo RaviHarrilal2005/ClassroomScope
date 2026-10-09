@@ -29,11 +29,13 @@ clustering chooses the number of topics. The minimum topic size defaults to 10;
 it is a cluster-size setting, not a request for exactly ten topics. Automatic
 discovery may find fewer or more topics than the existing model, or no clusters.
 
-When ready to train, run from the project folder:
+When ready to train, run from `backend/`:
 
 ```bash
-.venv/bin/python topic_model_agent/train_auto.py --version auto-v1
+python -m agents.topic.train_auto --version auto-v1
 ```
+
+`--min-topic-size` changes the cluster size (default 10).
 
 Outputs are saved in a new `models/auto-v1/` directory: `model.pkl`, `topics.csv`,
 `assignments.csv`, and `training.json`. Existing candidate directories cannot be

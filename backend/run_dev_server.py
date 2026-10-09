@@ -78,8 +78,12 @@ def main(argv=None):
         seed.run("scheduled")
 
     from app import create_app
+    from orchestrator.topic_counts import unavailable
 
-    app = create_app(runner=BackgroundRunner(coordinator))
+    app = create_app(
+        runner=BackgroundRunner(coordinator),
+        read_topics=lambda: unavailable("The dev server doesn't read the database, so there are no topic counts."),
+    )
     print(f"\n  Dev backend (stub agents, in-memory) on http://localhost:{args.port}")
     print(f"  {delay}s per stage{' — failing: ' + ', '.join(args.fail) if args.fail else ''}")
     print(f"  {args.seed} seeded run(s). Nothing here touches Supabase or the network.\n")
