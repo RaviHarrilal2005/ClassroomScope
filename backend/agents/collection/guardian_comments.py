@@ -26,12 +26,11 @@ Verified live, Oct 2026:
   - `body` is HTML, stripped to plain text before storage.
   - `userProfile.userId` is SHA-256 hashed before storage.
 
-Usage:
-    python guardian_comments.py         # all pending articles
-    python guardian_comments.py 3       # only 3 articles (test)
+Usage (from backend/):
+    python -m agents.collection.guardian_comments       # all pending articles
+    python -m agents.collection.guardian_comments 3     # only 3 articles (test)
 """
 
-import os
 import re
 import sys
 import time
@@ -40,11 +39,8 @@ from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
 
-from db import _supabase
-
-load_dotenv()
+from ..supabase_client import get_client
 
 BASE_URL = "https://discussion.theguardian.com/discussion-api"
 PAGE_SIZE = 100
@@ -138,13 +134,14 @@ def fetch_comments_for(article_id, discussion_key):
 
 
 def run(limit=None):
+    client = get_client()
     # Articles with comments enabled AND a discussion key.
     query = (
-        _supabase.table("articles")
+        client.table("articles")
         .select("id, guardian_discussion_key")
         .eq("guardian_commentable", True)
-	.eq("llm_relevant", True)
-    	.eq("processing_status", "success")
+        .eq("llm_relevant", True)
+        .eq("processing_status", "success")
     )
     if limit:
         query = query.limit(limit)
@@ -153,7 +150,7 @@ def run(limit=None):
 
     # Skip articles already represented in the comments table.
     existing = (
-        _supabase.table("comments")
+        client.table("comments")
         .select("article_id")
         .execute()
     ).data or []
@@ -185,7 +182,7 @@ def run(limit=None):
         try:
             for j in range(0, len(unique_rows), 100):
                 batch = unique_rows[j:j + 100]
-                _supabase.table("comments").upsert(
+                client.table("comments").upsert(
                     batch, on_conflict="comment_id"
                 ).execute()
             total_inserted += len(unique_rows)

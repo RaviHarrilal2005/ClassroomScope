@@ -19,22 +19,19 @@ Verified against live Guardian API:
     articles return every run and dedup skips them, so a scheduled
     collection would never see new items.
 
-Usage:
-    python guardian_fetcher.py          # up to MAX_PAGES
-    python guardian_fetcher.py 2        # 2 pages
+Usage (from backend/):
+    python -m agents.collection.guardian_fetcher        # up to MAX_PAGES
+    python -m agents.collection.guardian_fetcher 2      # 2 pages
 """
 
-import os
 import re
 import sys
 import time
 
 import requests
-from dotenv import load_dotenv
 
-load_dotenv()
+from ..config import optional_key
 
-GUARDIAN_API_KEY = os.getenv("GUARDIAN_API_KEY")
 BASE_URL = "https://content.guardianapis.com/search"
 QUERY = (
     '"generative AI" OR "gen AI" OR "large language model" OR '
@@ -78,14 +75,17 @@ def fetch_from_guardian(max_pages=MAX_PAGES, page_size=PAGE_SIZE):
     Returns a flat list of article dicts compatible with
     db.insert_articles(). Partial results on error; never raises.
     """
-    if not GUARDIAN_API_KEY:
+    # Read when fetching, not at import, like the other fetchers: the
+    # app imports this module before backend/.env may be loaded.
+    api_key = optional_key("GUARDIAN_API_KEY")
+    if not api_key:
         print("GUARDIAN_API_KEY not set in .env")
         return []
 
     articles = []
     for page in range(1, max_pages + 1):
         params = {
-            "api-key": GUARDIAN_API_KEY,
+            "api-key": api_key,
             "q": QUERY,
             "tag": TAG,
             "lang": "en",
