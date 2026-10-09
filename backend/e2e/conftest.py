@@ -13,13 +13,18 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
-from typing import Any, NoReturn
+import subprocess
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, NoReturn, Optional, Tuple
 from urllib.parse import urlparse
 
 import pytest
 
-from e2e.settings import TOPIC_CATALOG, credential_problem, load_e2e_env
+from e2e import database
+from e2e.results import Check, Footprint, render
+from e2e.settings import BACKEND, RESULTS_ROOT, TOPIC_CATALOG, credential_problem, load_e2e_env
 
 
 def pytest_addoption(parser):
@@ -27,13 +32,98 @@ def pytest_addoption(parser):
                      help="also run one real collection from RSS and GNews (never NewsAPI)")
 
 
+@dataclass
+class SessionState:
+    results_dir: Path
+    header: Dict[str, str]
+    started_at: str      # UTC ISO: classification rows re-written since then are this session's
+    checks: Dict[str, Check] = field(default_factory=dict)
+    client: Any = None
+    before: Optional[Dict[str, Tuple[int, int]]] = None
+    stopped: Optional[str] = None
+
+
+STATE: Optional[SessionState] = None
+
+
 def pytest_configure(config):
+    global STATE
     # Before anything imports the app or an agent: their own load_dotenv
     # calls never override, so the values loaded here win.
     try:
         load_e2e_env()
     except FileNotFoundError as exc:
         raise pytest.UsageError(str(exc)) from None
+    if config.option.collectonly:
+        return
+    now = datetime.now()
+    results_dir = RESULTS_ROOT / now.strftime("%Y-%m-%d_%H%M%S")
+    results_dir.mkdir(parents=True, exist_ok=True)
+    mode = ("stored articles (5 per run) and one real RSS + GNews collection"
+            if config.getoption("--collect") else "stored articles only (5 per run)")
+    STATE = SessionState(
+        results_dir=results_dir,
+        header={"Date": now.strftime("%Y-%m-%d %H:%M"), "Branch": git_describe(), "Mode": mode},
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def git_describe() -> str:
+    """'branch @ commit', for the results header."""
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=BACKEND, capture_output=True, text=True,
+                              timeout=10).stdout.strip()
+    try:
+        return f"{git('rev-parse', '--abbrev-ref', 'HEAD')} @ {git('rev-parse', '--short', 'HEAD')}"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+def pytest_runtest_logreport(report):
+    if STATE is None:
+        return
+    check = STATE.checks.setdefault(report.nodeid, Check(report.nodeid.split("::")[-1]))
+    check.seconds += report.duration
+    for name, value in report.user_properties:
+        target = {"note": check.notes, "screenshot": check.screenshots}.get(name)
+        if target is not None and value not in target:
+            target.append(value)
+    if report.failed:
+        check.outcome = "failed" if report.when == "call" else "error"
+        check.error = report.longreprtext[-3000:]
+    elif report.skipped:
+        check.outcome = "skipped"
+        reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else str(report.longrepr)
+        check.notes.append(reason.removeprefix("Skipped: "))
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if STATE is None:
+        return
+    footprint = None
+    if STATE.client is not None and STATE.before is not None:
+        try:
+            footprint = measure_footprint(STATE.client, STATE.before, STATE.started_at)
+        except Exception as exc:   # the results file must still be written
+            STATE.header["Footprint"] = f"could not be measured: {exc}"
+    text = render(STATE.header, list(STATE.checks.values()), footprint, STATE.stopped)
+    (STATE.results_dir / "results.md").write_text(text, encoding="utf-8")
+
+
+def pytest_terminal_summary(terminalreporter):
+    if STATE is not None:
+        terminalreporter.write_line(f"End-to-end results: {STATE.results_dir / 'results.md'}")
+
+
+def measure_footprint(client: Any, before: Dict[str, Tuple[int, int]], since: str) -> Footprint:
+    after = database.snapshot(client)
+    return Footprint(
+        before={table: count for table, (count, _) in before.items()},
+        after={table: count for table, (count, _) in after.items()},
+        rewritten_classifications=database.count_since(client, "classification_results", "classified_at", since),
+        run_ids=database.ids_above(client, "pipeline_runs", before["pipeline_runs"][1]),
+        article_ids=database.ids_above(client, "articles", before["articles"][1]),
+    )
 
 
 @dataclass
@@ -47,6 +137,8 @@ class Environment:
 
 def stop(reason: str) -> NoReturn:
     """A setup check failed: nothing after it can work, so end the session."""
+    if STATE is not None:
+        STATE.stopped = reason
     pytest.exit(reason, returncode=2)
 
 
@@ -65,6 +157,10 @@ def environment() -> Environment:
         client.table("pipeline_runs").select("id").limit(1).execute()
     except Exception as exc:
         stop(f"S1: cannot read pipeline_runs on {host}: {exc}")
+    if STATE is not None:
+        STATE.client = client
+        STATE.header["Database"] = host
+        STATE.before = database.snapshot(client)
 
     from agents.adapters import TopicAgent
     from orchestrator import build_default_registry
@@ -81,4 +177,12 @@ def environment() -> Environment:
     models = json.loads(TOPIC_CATALOG.read_text())["models"]
     topic_model = ", ".join(f"{name} ({reg['version']})" for name, reg in models.items()
                             if (TOPIC_MODELS / name).is_file())
+    if STATE is not None:
+        STATE.header.update({"Classifier": classifier, "Topic model": topic_model})
     return Environment(client, registry, host, classifier, topic_model)
+
+
+@pytest.fixture(scope="session")
+def results_dir() -> Path:
+    assert STATE is not None, "results_dir is only available in a test session"
+    return STATE.results_dir

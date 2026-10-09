@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from e2e.results import Check, Footprint, render
 from e2e.settings import credential_problem, load_e2e_env
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -51,3 +52,38 @@ def test_credentials_that_cannot_run_the_suite_say_why(url, key, problem):
 
 def test_a_secret_key_and_an_api_url_are_fine():
     assert credential_problem("https://abc.supabase.co", "sb_secret_x") is None
+
+
+def test_results_list_every_check_and_the_footprint():
+    checks = [
+        Check("test_p1", "passed", 1.5, notes=["run #31"]),
+        Check("test_d3", "failed", 75.0, screenshots=["D3-failure.png"], error="AssertionError: stuck at running"),
+        Check("test_c1", "skipped", 0.0, notes=["real collection runs only with --collect"]),
+    ]
+    footprint = Footprint(before={"pipeline_runs": 12, "articles": 100}, after={"pipeline_runs": 14, "articles": 100},
+                          rewritten_classifications=10, run_ids=[31, 32], article_ids=[])
+    text = render({"Date": "2026-10-08 14:05", "Database": "abc.supabase.co"}, checks, footprint)
+
+    assert text.startswith("# End-to-end results, 2026-10-08 14:05\n")
+    assert "| Database | abc.supabase.co |" in text
+    assert "**1 passed, 1 failed, 1 skipped** in 1m 16s" in text
+    assert "| test_p1 | passed | 1.5s | run #31 |" in text
+    assert "| pipeline_runs | 12 | 14 | +2 |" in text
+    assert "| articles | 100 | 100 | 0 |" in text
+    assert "- Classification rows re-written: 10" in text
+    assert "- Runs created: #31, #32" in text
+    assert "- New articles: none" in text
+    assert "### test_d3" in text
+    assert "AssertionError: stuck at running" in text
+    assert "Screenshot: D3-failure.png" in text
+
+
+def test_a_note_with_a_pipe_cannot_break_the_table():
+    text = render({"Date": "now"}, [Check("test_x", notes=["a | b"])], None)
+    assert "| test_x | passed | 0.0s | a \\| b |" in text
+
+
+def test_a_session_stopped_by_a_setup_check_says_why():
+    text = render({"Date": "now"}, [], None, stopped="S1: SUPABASE_URL and SUPABASE_KEY are not set.")
+    assert "## Stopped early\n\nS1: SUPABASE_URL and SUPABASE_KEY are not set." in text
+    assert "**0 passed, 0 failed, 0 skipped** in 0.0s" in text

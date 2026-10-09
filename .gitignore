@@ -23,3 +23,6 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# End-to-end results: one folder per session (backend/e2e/results/<date-time>/)
+backend/e2e/results/
