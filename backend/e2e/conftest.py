@@ -220,12 +220,16 @@ FINISHED = ("completed", "completed_with_errors", "failed")
 
 
 @pytest.fixture(scope="session")
-def api_run(backend) -> SimpleNamespace:
+def api_run(backend, environment) -> SimpleNamespace:
     """
     One run started through the API and watched to the end (P1-P5, D2, D3).
 
     A second start goes out straight after the first, while the first is
-    still running, for P3. The tests assert on what was recorded here.
+    still running, for P3. The database facts P5 checks are read the
+    moment the run finishes: pytest runs the browser tests first, and
+    D3's run re-classifies the same 5 articles, which moves their
+    classified_at out of this run's window. The tests assert on what was
+    recorded here.
     """
     api = f"{backend.url}/api/v1"
     first = requests.post(f"{api}/runs", json={"trigger_type": "manual"}, timeout=60)
@@ -237,6 +241,15 @@ def api_run(backend) -> SimpleNamespace:
         while final["status"] not in FINISHED and time.monotonic() < deadline:
             time.sleep(2)
             final = requests.get(f"{api}/runs/{final['id']}", timeout=60).json()
+    stored = None
+    if final is not None and final["status"] in FINISHED:
+        db = environment.client
+        row = database.run_row(db, final["id"])
+        classified = database.classified_between(db, row["started_at"], row["finished_at"])
+        stored = SimpleNamespace(
+            row=row, stages=database.stage_rows(db, final["id"]), classified=classified,
+            analysable=database.analysable(db, classified),
+            with_topic=database.articles_with_rows(db, "topic_results", classified))
     # The runner clears its active run a moment after the database says the
     # run finished, so give the list up to 10 seconds to catch up.
     listing = requests.get(f"{api}/runs", timeout=60).json()
@@ -244,7 +257,7 @@ def api_run(backend) -> SimpleNamespace:
     while listing["active_run_id"] is not None and time.monotonic() < deadline:
         time.sleep(0.5)
         listing = requests.get(f"{api}/runs", timeout=60).json()
-    return SimpleNamespace(first=first, second=second, final=final, listing=listing)
+    return SimpleNamespace(first=first, second=second, final=final, listing=listing, stored=stored)
 
 
 @pytest.fixture(scope="session")
