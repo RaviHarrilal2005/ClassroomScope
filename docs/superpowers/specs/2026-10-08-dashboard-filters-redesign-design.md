@@ -197,9 +197,11 @@ Each reads the view state itself and takes no props, like
 
 They use plain semantic HTML (`form`, `label`, `select`, `input`,
 `button`, `table`, `ul`, `mark`) and these class names, which workstream
-B styles: `filter-panel`, `field`, `field-row`, `table-meta`,
-`data-table`, `snippet`, `comment-list`, `comment`, `comment-meta`,
-`empty-note`.
+B styles: `filter-panel`, `field`, `field-row`, `secondary` (a button),
+`table-meta`, `table-scroll`, `data-table`, `snippet`, `card`,
+`comment-list`, `comment`, `comment-meta`, `empty-note`.
+`CommentResults` renders its own `card` section, so it disappears
+entirely when there is no search; the other two render content only.
 
 ### Redesign (owned by workstream B)
 
