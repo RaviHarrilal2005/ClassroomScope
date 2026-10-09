@@ -1,23 +1,18 @@
 TESTS TO ADD LATER - ClassroomScope pipeline coordinator
 =========================================================
 
-Each folder holds the tests for one upcoming feature. When that feature
-is built:
-
-  1. Copy the folder's .py file(s) into backend/tests/
-  2. From the backend folder, run:  python -m pytest tests
-
-Each file works on its own. They only rely on conftest.py and
-helpers.py, which are already in the repo.
+The folders listed below were never committed to the repository, so
+only this list survives: each group has to be written when its trigger
+is met. Group 3 is covered now by backend/tests/test_routes.py.
 
 
 Folder                                  Add when...                                   Tests
 -------------------------------------   -------------------------------------------   -----
-3_when_dashboard_polls_run_status       the dashboard shows run progress                 4
+3_when_dashboard_polls_run_status       the dashboard shows run progress              landed
 4_when_retry_settings_are_final         the team settles retry counts and wait times     3
 5_when_scheduling_or_reruns_are_added   scheduled runs or single-stage re-runs exist     2
                                                                                         ---
-                                                                                          9
+                                                                         still to write: 5
 
 
 ALREADY LANDED

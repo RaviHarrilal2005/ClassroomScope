@@ -8,6 +8,9 @@ Run from backend/ (plain `pytest` never collects this folder):
 
 This writes to the Supabase project in backend/.env, or in the file that
 E2E_ENV_FILE names. Design: docs/superpowers/specs/2026-10-08-e2e-testing-design.md
+
+MVP (README, "MVP features — come back to these"): it runs against the
+team's shared database until there is a test database.
 """
 from __future__ import annotations
 
