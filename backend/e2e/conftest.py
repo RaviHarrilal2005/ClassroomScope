@@ -245,3 +245,24 @@ def api_run(backend) -> SimpleNamespace:
         time.sleep(0.5)
         listing = requests.get(f"{api}/runs", timeout=60).json()
     return SimpleNamespace(first=first, second=second, final=final, listing=listing)
+
+
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args):
+    """Reduced motion, so charts draw their final frame at once; tall enough for both charts."""
+    return {**browser_context_args, "reduced_motion": "reduce",
+            "viewport": {"width": 1280, "height": 1600}}
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    page = item.funcargs.get("page")
+    if report.when == "call" and report.failed and page is not None and STATE is not None:
+        name = f"{item.name}-failure.png"
+        try:
+            page.screenshot(path=str(STATE.results_dir / name), full_page=True)
+            report.user_properties.append(("screenshot", name))
+        except Exception:   # a failed screenshot must not hide the test's own failure
+            pass
