@@ -6,7 +6,10 @@ that can return more than PostgREST's 1,000-row page reads in pages.
 """
 from __future__ import annotations
 
+import json
 from typing import Any, Callable, Dict, List, Set, Tuple
+
+from e2e.settings import TOPIC_CATALOG
 
 # The tables a run writes to, for the before/after footprint.
 FOOTPRINT_TABLES = ("pipeline_runs", "pipeline_stage_runs", "articles",
@@ -76,3 +79,19 @@ def articles_with_rows(client: Any, table: str, ids: Set[int]) -> Set[int]:
         return set()
     rows = client.table(table).select("article_id").in_("article_id", sorted(ids)).execute().data
     return {row["article_id"] for row in rows}
+
+
+def topic_facet(client: Any) -> Dict[str, Any]:
+    """The /results topic facet as Supabase's own exact counts give it."""
+    topics = json.loads(TOPIC_CATALOG.read_text())["topics"]
+
+    def exact(query: Any) -> int:
+        return query.limit(1).execute().count or 0
+
+    counts = {topic_id: exact(client.table("topic_results").select("id", count="exact")
+                              .eq("stable_topic_id", topic_id))
+              for topic_id in topics}
+    items = sorted(({"label": topics[t]["label"], "count": n} for t, n in counts.items() if n),
+                   key=lambda item: (-item["count"], item["label"]))
+    unassigned = exact(client.table("topic_results").select("id", count="exact").is_("stable_topic_id", "null"))
+    return {"counted": sum(counts.values()), "unassigned": unassigned, "items": items}
