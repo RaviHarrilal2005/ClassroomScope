@@ -17,14 +17,16 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, NoReturn, Optional, Tuple
+from typing import Any, Dict, Iterator, NoReturn, Optional, Tuple
 from urllib.parse import urlparse
 
 import pytest
 
 from e2e import database
 from e2e.results import Check, Footprint, render
-from e2e.settings import BACKEND, RESULTS_ROOT, TOPIC_CATALOG, credential_problem, load_e2e_env
+from e2e.servers import ServerThread, build_frontend, serve_backend, serve_static
+from e2e.settings import (BACKEND, RESULTS_ROOT, RUN_TIMEOUT, SERVER_TIMEOUT, TOPIC_CATALOG,
+                          credential_problem, load_e2e_env)
 
 
 def pytest_addoption(parser):
@@ -186,3 +188,26 @@ def environment() -> Environment:
 def results_dir() -> Path:
     assert STATE is not None, "results_dir is only available in a test session"
     return STATE.results_dir
+
+
+@pytest.fixture(scope="session")
+def backend(environment) -> Iterator[ServerThread]:
+    """The real app on a free port. Its runs use the real agents over 5 stored articles."""
+    from app import create_app
+    from orchestrator import BackgroundRunner, PipelineCoordinator
+    from orchestrator.supabase_store import SupabaseRunStore
+
+    runner = BackgroundRunner(PipelineCoordinator(environment.registry, SupabaseRunStore.from_env()))
+    with serve_backend(create_app(runner=runner)) as server:
+        yield server
+        # A run a test started must finish recording before the server goes.
+        runner.wait(timeout=RUN_TIMEOUT)
+
+
+@pytest.fixture(scope="session")
+def frontend(backend, tmp_path_factory) -> Iterator[ServerThread]:
+    """The production build, pointed at the test backend, on a free port."""
+    out = tmp_path_factory.mktemp("frontend-build")
+    build_frontend(out, f"{backend.url}/api/v1", timeout=SERVER_TIMEOUT)
+    with serve_static(out) as server:
+        yield server

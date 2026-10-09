@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from e2e.results import Check, Footprint, render
+from e2e.servers import FrontendBuildError, build_frontend
 from e2e.settings import credential_problem, load_e2e_env
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -87,3 +88,8 @@ def test_a_session_stopped_by_a_setup_check_says_why():
     text = render({"Date": "now"}, [], None, stopped="S1: SUPABASE_URL and SUPABASE_KEY are not set.")
     assert "## Stopped early\n\nS1: SUPABASE_URL and SUPABASE_KEY are not set." in text
     assert "**0 passed, 0 failed, 0 skipped** in 0.0s" in text
+
+
+def test_a_frontend_without_npm_install_fails_with_the_fix(tmp_path):
+    with pytest.raises(FrontendBuildError, match="npm install"):
+        build_frontend(tmp_path / "out", "http://127.0.0.1:1/api/v1", frontend_dir=tmp_path)
