@@ -34,17 +34,29 @@
 - Topics: Improvement, leadership, technology
 - Notes: Written effective implementations for education improvements
 
-## News APIs (2)
+## News APIs (3)
 
 1. **NewsAPI** - https://newsapi.org/
 - Endpoint: `/v2/everything?q=generative%20AI%20education`
 - Free tier: 100 requests/day
-- API Key: stored in .env as `NEWS\_API\_KEY`
+- API Key: stored in .env as `NEWS_API_KEY`
 
 2. **GNews API** - https://gnews.io/
 - Endpoint: `/search?q=generative%20AI%20education`
 - Free tier: 100 requests/day
-- API Key: stored in .env as `GNEWS\_API\_KEY`
+- API Key: stored in .env as `GNEWS_API_KEY`
+
+3. **The Guardian Open Platform** - https://open-platform.theguardian.com/
+- Endpoint: `https://content.guardianapis.com/search`
+- Free tier: Developer tier, ~1 req/sec, 500 calls/day
+- API Key: stored in .env as `GUARDIAN_API_KEY`
+- Notes: Unlike the other sources, Guardian articles carry a
+  `commentable` flag and a short URL (`/p/xxxxx`) that maps to a
+  Discussion API endpoint for comment retrieval. See
+  `guardian_fetcher.py` and `guardian_comments.py`.
+- Discussion API (undocumented, separate from Open Platform):
+  `https://discussion.theguardian.com/discussion-api/discussion//p/<shortid>`
+  — no auth, paginates top-level comments, replies embedded.
 
 ## Additional Notes
 - All sources are English-language news articles
