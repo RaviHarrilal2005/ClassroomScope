@@ -193,8 +193,10 @@ those records.
   reason, since nothing after it can work.
 - Every other check is independent: a failure is recorded with its error
   and screenshot, and the rest still run.
-- Every wait has a limit: 5 minutes for a pipeline run, 60 seconds for
-  the servers and the frontend build, 30 seconds for page loads.
+- Every wait has a limit: 5 minutes for a pipeline run over stored
+  articles, 10 minutes for the real collection run (it fetches and
+  downloads pages), 60 seconds for the servers and the frontend build,
+  30 seconds for page loads.
 - The servers, the temporary build and the browser are shut down when the
   session ends, whether it passed or failed.
 
