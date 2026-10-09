@@ -14,13 +14,16 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, Iterator, NoReturn, Optional, Tuple
 from urllib.parse import urlparse
 
 import pytest
+import requests
 
 from e2e import database
 from e2e.results import Check, Footprint, render
@@ -211,3 +214,34 @@ def frontend(backend, tmp_path_factory) -> Iterator[ServerThread]:
     build_frontend(out, f"{backend.url}/api/v1", timeout=SERVER_TIMEOUT)
     with serve_static(out) as server:
         yield server
+
+
+FINISHED = ("completed", "completed_with_errors", "failed")
+
+
+@pytest.fixture(scope="session")
+def api_run(backend) -> SimpleNamespace:
+    """
+    One run started through the API and watched to the end (P1-P5, D2, D3).
+
+    A second start goes out straight after the first, while the first is
+    still running, for P3. The tests assert on what was recorded here.
+    """
+    api = f"{backend.url}/api/v1"
+    first = requests.post(f"{api}/runs", json={"trigger_type": "manual"}, timeout=60)
+    second = requests.post(f"{api}/runs", json={"trigger_type": "manual"}, timeout=60)
+    final = None
+    if first.status_code == 202:
+        final = first.json()
+        deadline = time.monotonic() + RUN_TIMEOUT
+        while final["status"] not in FINISHED and time.monotonic() < deadline:
+            time.sleep(2)
+            final = requests.get(f"{api}/runs/{final['id']}", timeout=60).json()
+    # The runner clears its active run a moment after the database says the
+    # run finished, so give the list up to 10 seconds to catch up.
+    listing = requests.get(f"{api}/runs", timeout=60).json()
+    deadline = time.monotonic() + 10
+    while listing["active_run_id"] is not None and time.monotonic() < deadline:
+        time.sleep(0.5)
+        listing = requests.get(f"{api}/runs", timeout=60).json()
+    return SimpleNamespace(first=first, second=second, final=final, listing=listing)

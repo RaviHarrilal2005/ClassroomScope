@@ -80,3 +80,14 @@ def render(header: Dict[str, str], checks: List[Check], footprint: Optional[Foot
             lines += ["", f"### {c.name}", "", "```", c.error.rstrip(), "```"]
             lines += [f"Screenshot: {name}" for name in c.screenshots]
     return "\n".join(lines) + "\n"
+
+
+def describe_run(run: Optional[dict]) -> str:
+    """The run and every stage with its status and error text: what a failed run check prints."""
+    if not run:
+        return "no run was started"
+    lines = [f"run #{run.get('id')} is {run.get('status')}: {run.get('notes') or ''}".rstrip(": ")]
+    for stage in run.get("stages", []):
+        detail = f" ({stage['error_detail']})" if stage.get("error_detail") else ""
+        lines.append(f"  {stage['stage_name']}: {stage['status']}{detail}")
+    return "\n".join(lines)

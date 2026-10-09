@@ -6,7 +6,7 @@ that can return more than PostgREST's 1,000-row page reads in pages.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Set, Tuple
 
 # The tables a run writes to, for the before/after footprint.
 FOOTPRINT_TABLES = ("pipeline_runs", "pipeline_stage_runs", "articles",
@@ -43,3 +43,36 @@ def ids_above(client: Any, table: str, after_id: int) -> List[int]:
 
 def count_since(client: Any, table: str, column: str, since_iso: str) -> int:
     return client.table(table).select("id", count="exact").gte(column, since_iso).limit(1).execute().count or 0
+
+
+def run_row(client: Any, run_id: int) -> Dict[str, Any]:
+    return client.table("pipeline_runs").select("*").eq("id", run_id).execute().data[0]
+
+
+def stage_rows(client: Any, run_id: int) -> List[Dict[str, Any]]:
+    return (client.table("pipeline_stage_runs").select("stage_name, status, error_detail")
+            .eq("run_id", run_id).order("id").execute().data)
+
+
+def classified_between(client: Any, start_iso: str, end_iso: str) -> Set[int]:
+    """Articles whose classification rows were written in this window."""
+    rows = page_all(lambda: client.table("classification_results").select("article_id")
+                    .gte("classified_at", start_iso).lte("classified_at", end_iso).order("id"))
+    return {row["article_id"] for row in rows}
+
+
+def analysable(client: Any, ids: Set[int]) -> Set[int]:
+    """The articles among `ids` that analysis can use: LLM-confirmed relevant and downloaded."""
+    if not ids:
+        return set()
+    rows = (client.table("articles").select("id").in_("id", sorted(ids))
+            .eq("llm_relevant", True).eq("processing_status", "success").execute().data)
+    return {row["id"] for row in rows}
+
+
+def articles_with_rows(client: Any, table: str, ids: Set[int]) -> Set[int]:
+    """The articles among `ids` that have at least one row in `table`."""
+    if not ids:
+        return set()
+    rows = client.table(table).select("article_id").in_("article_id", sorted(ids)).execute().data
+    return {row["article_id"] for row in rows}

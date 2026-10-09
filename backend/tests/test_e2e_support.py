@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from e2e.results import Check, Footprint, render
+from e2e.results import Check, Footprint, describe_run, render
 from e2e.servers import FrontendBuildError, build_frontend
 from e2e.settings import credential_problem, load_e2e_env
 
@@ -93,3 +93,18 @@ def test_a_session_stopped_by_a_setup_check_says_why():
 def test_a_frontend_without_npm_install_fails_with_the_fix(tmp_path):
     with pytest.raises(FrontendBuildError, match="npm install"):
         build_frontend(tmp_path / "out", "http://127.0.0.1:1/api/v1", frontend_dir=tmp_path)
+
+
+def test_a_failed_run_is_described_by_stage_with_its_error():
+    run = {"id": 7, "status": "completed_with_errors", "notes": "Failed stage(s): topic.",
+           "stages": [{"stage_name": "collection", "status": "succeeded", "error_detail": None},
+                      {"stage_name": "topic", "status": "failed",
+                       "error_detail": "ValueError: Saved model has changed."}]}
+    text = describe_run(run)
+    assert text.startswith("run #7 is completed_with_errors: Failed stage(s): topic.")
+    assert "  collection: succeeded" in text
+    assert "  topic: failed (ValueError: Saved model has changed.)" in text
+
+
+def test_a_run_that_never_started_is_described_as_such():
+    assert describe_run(None) == "no run was started"
