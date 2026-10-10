@@ -129,7 +129,7 @@ INJECTION_PATTERNS = [
 
     # Instruction-to-the-model phrasings.
     re.compile(r"\byou\s+(?:are|must|should|will)\s+now\b", re.I),
-    re.compile(r"\b(?:new|updated|revised)\s+(?:instructions?|rules?|task|directive)\b", re.I),
+    re.compile(r"\b(?:new|updated|revised)\s+(?:instructions?|rules?|task|directive)s?\s*:", re.I),
     re.compile(r"\b(?:act|behave|respond|reply|classify|label|rate|mark|score)\s+as\s+if\b", re.I),
     re.compile(rf"\b(?:classify|label|rate|mark|score|tag)\s+(?:this|all|every|each)\b.{{0,40}}\b"
                r"(?:regardless|no\s+matter|irrespective|whatever)\b", re.I),
