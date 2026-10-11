@@ -3,13 +3,19 @@ import re
 from transformers import pipeline, AutoTokenizer
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-# news-trained model (matched the hand-checked labels best in our 10-article test)
+# ---------------- settings ----------------
+
+# news-trained model (picked over the tweet model, which gave about 85% neutral)
 model_name = "Jean-Baptiste/roberta-large-financial-news-sentiment-en"
 method_name = "roberta_news"
 
-# extra copies of articles that were saved more than once
-# (the first copy is kept: 53, 47, 356, 492) - same ones the topic agent leaves out
-duplicates = ["54", "322", "357", "358", "493"]
+# the articles file downloaded from Supabase (put it in the ClassroomScope folder)
+articles_file = "articles_rows.csv"
+
+# decimal places for the confidence score in the upload file
+decimals = 3
+
+# ------------------------------------------
 
 sentiment_model = pipeline(
     "text-classification",
@@ -54,6 +60,8 @@ def analyze_sentiment(text):
 
         for result in results:
             label = result["label"].lower()
+            if label not in scores:
+                raise ValueError("Model gave an unexpected label: " + result["label"])
             # longer chunks count more than short ones
             scores[label] += result["score"] * chunk_length
 
@@ -94,24 +102,46 @@ def vader_sentiment(text):
     return label, average
 
 
+def is_true(value):
+    return str(value).strip().lower() == "true"
+
+
 # read the articles file downloaded from Supabase
 csv.field_size_limit(10000000)
 
+with open(articles_file, encoding="utf-8") as file:
+    all_rows = list(csv.DictReader(file))
+
+if len(all_rows) == 0:
+    raise SystemExit("The articles file is empty. Download it again from Supabase.")
+
+if "llm_relevant" not in all_rows[0]:
+    raise SystemExit("The articles file has no llm_relevant column. Download a new copy from Supabase.")
+
+# Juan's new rule: LLM says relevant AND full text was extracted
+relevant = []
+for row in all_rows:
+    if (
+        is_true(row["llm_relevant"])
+        and row["processing_status"].strip().lower() == "success"
+        and row["clean_content"].strip() != ""
+    ):
+        relevant.append(row)
+
+relevant.sort(key=lambda row: int(row["id"]))
+
+# remove extra copies of the same article (same content_hash), keep the first one
 articles = []
 skipped_duplicates = []
-with open("articles_rows.csv", encoding="utf-8") as file:
-    reader = csv.DictReader(file)
-    for row in reader:
-        # same rule as Juan's code: relevant AND successfully cleaned
-        if (
-            row["is_relevant"].strip().lower() == "true"
-            and row["processing_status"].strip().lower() == "success"
-            and row["clean_content"].strip() != ""
-        ):
-            if row["id"] in duplicates:
-                skipped_duplicates.append(row["id"])
-                continue
-            articles.append(row)
+seen_hashes = set()
+for row in relevant:
+    content_hash = row["content_hash"].strip()
+    if content_hash != "" and content_hash in seen_hashes:
+        skipped_duplicates.append(row["id"])
+        continue
+    if content_hash != "":
+        seen_hashes.add(content_hash)
+    articles.append(row)
 
 print("Relevant articles found:", len(articles))
 print("Duplicates skipped:", skipped_duplicates)
@@ -120,11 +150,17 @@ print("Duplicates skipped:", skipped_duplicates)
 results = []
 failed = []
 agree = 0
+stopped_early = False
 
 for number, article in enumerate(articles, start=1):
     try:
         roberta_label, roberta_confidence, roberta_scores = analyze_sentiment(article["clean_content"])
         vader_label, vader_score = vader_sentiment(article["clean_content"])
+    except KeyboardInterrupt:
+        # Ctrl + C was pressed: stop, but still save what was finished
+        stopped_early = True
+        print("\nStopped early at article", number, "of", len(articles))
+        break
     except Exception as error:
         # skip this article but remember it, so one bad article doesn't stop everything
         failed.append(article["id"])
@@ -154,24 +190,25 @@ for number, article in enumerate(articles, start=1):
 
 if results:
     # file 1: all results, for checking and for the report (full numbers, not rounded)
-    with open("sentiment_results_final.csv", "w", newline="", encoding="utf-8") as file:
+    with open("sentiment_results_v2.csv", "w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=results[0].keys())
         writer.writeheader()
         writer.writerows(results)
 
     # file 2: only the columns the Supabase sentiment_results table has
-    with open("sentiment_upload.csv", "w", newline="", encoding="utf-8") as file:
+    # (confidence rounded to 3 decimal places)
+    with open("sentiment_upload_v2.csv", "w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=["article_id", "sentiment", "confidence", "method"])
         writer.writeheader()
         for r in results:
             writer.writerow({
                 "article_id": r["article_id"],
                 "sentiment": r["roberta_sentiment"],
-                "confidence": r["roberta_confidence"],
+                "confidence": round(r["roberta_confidence"], decimals),
                 "method": method_name
             })
 
-    print("\nSaved sentiment_results_final.csv and sentiment_upload.csv")
+    print("\nSaved sentiment_results_v2.csv and sentiment_upload_v2.csv")
 else:
     print("\nNo results to save")
 
@@ -187,3 +224,6 @@ for label in ["positive", "neutral", "negative"]:
 
 if results:
     print("RoBERTa and VADER agreed on", agree, "out of", len(results), "articles")
+
+if stopped_early:
+    print("\nWARNING: the run was stopped early. Do NOT upload sentiment_upload_v2.csv, run it again first.")
