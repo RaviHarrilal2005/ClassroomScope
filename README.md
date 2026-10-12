@@ -1,45 +1,5 @@
 # ClassroomScope (in progress)
 
-> **Branch `dashboard-mvp-redesign`: workstream B of the dashboard MVP. Not started (2026-10-08).**
->
-> Builds feature 3 of the MVP, a **visual redesign** with demo-ready
-> polish. It is MVP: it works, but takes known shortcuts we'll come back
-> to.
->
-> - One stylesheet, `frontend/src/styles.css`, with design tokens. It
->   keeps the existing status palette and adds no new dependencies.
-> - A top bar with **Dashboard** and **Pipeline runs** tabs.
-> - The dashboard: a filter sidebar, Sentiment and Top topics cards side
->   by side, then cards for the articles and the comments.
-> - The pipeline-runs console restyled with the shared classes.
-> - Below 900px wide, the sidebar stacks above the cards.
->
-> This branch owns `frontend/src/styles.css`, `frontend/src/main.jsx`,
-> `frontend/index.html`, and these files in `frontend/src/components/`:
-> `DashboardShell.jsx`, `AdminConsole.jsx`, `StatusBadge.jsx`,
-> `VisualizationViews.jsx` and `statusStyles.js`.
->
-> It never edits the filter, table or comment components, the view
-> state, the API client, or anything in `backend/`. Those belong to
-> `dashboard-mvp-filters`.
->
-> Its dev servers run on ports 5002 (backend) and 5175 (Vite).
->
-> - Plan: `docs/superpowers/plans/2026-10-08-dashboard-mvp.md`, Tasks B1–B3
->   (written, **not yet approved**)
-> - Spec: `docs/superpowers/specs/2026-10-08-dashboard-filters-redesign-design.md`
->
-> **To resume:**
->
-> 1. Approve the plan.
-> 2. Wait for Task 0 on `dashboard-mvp`, which adds the component stubs
->    this layout imports, then run `git merge dashboard-mvp` here.
-> 3. Hand Tasks B1–B3 to a subagent working in this worktree
->    (`../ClassroomScope-mvp-redesign`).
->
-> This branch merges back into `dashboard-mvp`, not `main`. Delete this
-> note at that merge.
-
 **Status:** front-end skeleton confirmed working end-to-end, and the
 backend pipeline coordinator's groundwork is in place (see
 [Pipeline coordinator](#pipeline-coordinator-in-progress) below).

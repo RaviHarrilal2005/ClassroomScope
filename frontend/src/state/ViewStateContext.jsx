@@ -5,11 +5,10 @@
  * from state instead of fetching data themselves.
  *
  * STATUS:
- *   - results + loading/error: works. /results counts top_topics from
- *     topic_results; sentiment and articles are still hardcoded (no
- *     aggregation agent yet).
+ *   - filters: held here; results and comment search reload whenever
+ *     they change. /results serves real articles and topic counts;
+ *     its sentiment is still a placeholder.
  *   - run status + the run-status poller: real, reading pipeline_runs.
- *   - Does NOT yet hold active filters (TODO, needs FilterPanel).
  */
 import {
   createContext,
@@ -19,7 +18,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { getResults, getRun, getRuns, startRun } from "../api/apiClient";
+import { getResults, getRun, getRuns, searchComments, startRun } from "../api/apiClient";
 
 const ViewStateContext = createContext(null);
 
@@ -32,6 +31,8 @@ const POLL_INTERVAL_MS = 2000;
 // RunStatus.FINISHED). Reaching one of these is how the poller knows to stop.
 const TERMINAL_STATUSES = ["completed", "completed_with_errors", "failed"];
 
+export const EMPTY_FILTERS = { from: "", to: "", source_type: "", stakeholder: "", topic: "", q: "" };
+
 export function isFinished(run) {
   return !!run && TERMINAL_STATUSES.includes(run.status);
 }
@@ -40,6 +41,18 @@ export function ViewStateProvider({ children }) {
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // --- filters and comment search ---------------------------------------
+  const [filters, setFilterState] = useState(EMPTY_FILTERS);
+  const [commentResults, setCommentResults] = useState(null);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState(null);
+
+  // Each request takes a ticket; a response whose ticket is no longer the
+  // latest is dropped. Typing a year into a date input fires several
+  // changes, and a slow early response must not overwrite a later one.
+  const resultsTicket = useRef(0);
+  const commentsTicket = useRef(0);
 
   // --- run state ------------------------------------------------------
   const [runs, setRuns] = useState([]);
@@ -53,24 +66,49 @@ export function ViewStateProvider({ children }) {
   // would tear down and rebuild the interval on each change.
   const watchedRunId = useRef(null);
 
-  // TODO: accept filters once FilterPanel is built
-  const loadResults = useCallback(async () => {
+  const loadResults = useCallback(async (activeFilters = EMPTY_FILTERS) => {
+    const ticket = ++resultsTicket.current;
     setLoading(true);
     setError(null);
     try {
-      setResults(await getResults());
+      const data = await getResults(activeFilters);
+      if (ticket === resultsTicket.current) setResults(data);
     } catch (err) {
-      setError(err.message);
+      // Keep the last good results on screen; the error says why they didn't change.
+      if (ticket === resultsTicket.current) setError(err.message);
     } finally {
-      setLoading(false);
+      if (ticket === resultsTicket.current) setLoading(false);
     }
   }, []);
 
-  // The dashboard's results load once on mount. Workstream A replaces
-  // this with an effect that reloads whenever the filters change.
+  const loadComments = useCallback(async (activeFilters) => {
+    const ticket = ++commentsTicket.current;
+    setCommentsError(null);
+    if (!activeFilters.q) {
+      setCommentResults(null);
+      setCommentsLoading(false);
+      return;
+    }
+    setCommentsLoading(true);
+    try {
+      const data = await searchComments(activeFilters);
+      if (ticket === commentsTicket.current) setCommentResults(data);
+    } catch (err) {
+      if (ticket === commentsTicket.current) setCommentsError(err.message);
+    } finally {
+      if (ticket === commentsTicket.current) setCommentsLoading(false);
+    }
+  }, []);
+
+  // Results and comments follow the filters, including the first load.
   useEffect(() => {
-    loadResults();
-  }, [loadResults]);
+    loadResults(filters);
+    loadComments(filters);
+  }, [filters, loadResults, loadComments]);
+
+  /** Merge a change into the filters, e.g. setFilters({ stakeholder: "educators" }). */
+  const setFilters = useCallback((patch) => setFilterState((current) => ({ ...current, ...patch })), []);
+  const clearFilters = useCallback(() => setFilterState(EMPTY_FILTERS), []);
 
   const loadRuns = useCallback(async () => {
     try {
@@ -174,13 +212,17 @@ export function ViewStateProvider({ children }) {
     });
   }, [loadRuns, selectRun]);
 
-  // TODO: activeFilters state + setFilters()
-
   const value = {
     results,
     loading,
     error,
     loadResults,
+    filters,
+    setFilters,
+    clearFilters,
+    commentResults,
+    commentsLoading,
+    commentsError,
     runs,
     activeRunId,
     selectedRun,
