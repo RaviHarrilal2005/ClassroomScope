@@ -19,10 +19,9 @@
     // agents/topic/test_saved_model.py covers its logic without the stack.
     "backend/agents/topic",
 
-    // agents/sentiment is a standalone script the pipeline does not run:
-    // it loads its models and reads a CSV export as soon as it is
-    // imported. Its transformers and vaderSentiment dependencies are not
-    // in requirements.txt.
+    // agents/sentiment keeps its models in module-level variables that
+    // start as None, which pyright reports on every use. It runs in the
+    // pipeline (SentimentAgent), but is excluded until those are typed.
     "backend/agents/sentiment"
   ],
 

@@ -27,6 +27,8 @@ the first time they are needed.
 import re
 import sys
 
+from orchestrator.agents import Agent
+
 MODEL_NAME = "Jean-Baptiste/roberta-large-financial-news-sentiment-en"
 METHODS = ("roberta_news", "vader")
 
@@ -261,7 +263,7 @@ def save_results(database, rows):
 
 # ---------------- the agent ----------------
 
-class SentimentAgent:
+class SentimentAgent(Agent):
     """
     Pipeline agent. run(ctx) labels the approved articles that do not
     have a result from this method yet and writes them to sentiment_results.
