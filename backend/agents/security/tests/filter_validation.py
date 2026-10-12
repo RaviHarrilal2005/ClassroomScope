@@ -25,13 +25,16 @@ Run:
 
 import os
 import re
-import sys
+import sys, pathlib
 from collections import Counter
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import psycopg2
 from dotenv import load_dotenv
 
-from .text_filter import sanitize_comment as sanitize_text
+
+
+from text_filter import sanitize_comment as sanitize_text
 
 load_dotenv()
 

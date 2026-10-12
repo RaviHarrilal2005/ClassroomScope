@@ -237,6 +237,7 @@ class SecurityAgent(Agent):
         approved: List[int] = []
         quarantined: List[int] = []
         reasons: Dict[str, int] = {}
+        decisions: List[Any] = []
 
         for row in rows:
             text = f"{row.get('title') or ''}\n\n{row.get('clean_content') or ''}".strip()
@@ -250,6 +251,7 @@ class SecurityAgent(Agent):
             logger.warning(
                 "Run %s: article %s quarantined (%s) matched=%r",
                 ctx.run_id, row["id"], reason, result.flagged_pattern,
+                decisions.append((row["id"], result, text))
             )
 
         # An ID we were given but could not read is not screened, so it
@@ -270,7 +272,15 @@ class SecurityAgent(Agent):
                 ctx.run_id, len(quarantined), len(ctx.article_ids),
                 ", ".join(f"{k}={v}" for k, v in sorted(reasons.items())),
             )
-
+        if decisions:
+            from .security import quarantine
+            rows_to_log = quarantine.build_rows(decisions, "articles", run_id=ctx.run_id)
+            if not quarantine.record_many(rows_to_log):
+                logger.warning(
+                    "Run %s: %d quarantine row(s) were not persisted (S.8)",
+                    ctx.run_id, len(rows_to_log),
+                )
+                
         return {
             "approved_ids": sorted(approved),
             "quarantined_ids": sorted(quarantined),
