@@ -230,3 +230,60 @@ def results_payload(corpus: Corpus, filters: Mapping[str, str]) -> Dict[str, Any
         },
         "filter_options": filter_options(everything),
     }
+
+
+# --- comment search --------------------------------------------------------
+
+def comments_unavailable(reason: str) -> Dict[str, Any]:
+    return {"available": False, "reason": reason, "total": 0, "comments": []}
+
+
+def escape_like(text: str) -> str:
+    """`text` for a LIKE pattern, with its wildcards matched literally."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def search_comments(client: Any, articles: List[Article], q: str,
+                    limit: int = COMMENT_LIMIT) -> Dict[str, Any]:
+    """
+    Comments on `articles` containing `q`, ignoring case, newest first.
+
+    `total` counts every match; at most `limit` come back. PostgREST reads
+    `*` in a pattern as a wildcard and has no escape for it, so a `*` in
+    `q` matches anything.
+    """
+    if not articles:
+        return {"available": True, "reason": None, "total": 0, "comments": []}
+    titles = {a["id"]: a.get("title") for a in articles}
+    # ponytail: the article IDs travel in the URL; past ~1,500 articles move this into an RPC.
+    response = (client.table("comments")
+                .select("comment_id, article_id, body_text, created_at, recommendation_count", count="exact")
+                .in_("article_id", sorted(titles))
+                .ilike("body_text", f"%{escape_like(q)}%")
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute())
+    return {
+        "available": True,
+        "reason": None,
+        "total": response.count or 0,
+        "comments": [{
+            "comment_id": c["comment_id"],
+            "article_id": c["article_id"],
+            "article_title": titles.get(c["article_id"]),
+            "created_at": c.get("created_at"),
+            "recommendation_count": c.get("recommendation_count"),
+            "snippet": make_snippet(c.get("body_text") or "", q),
+        } for c in response.data],
+    }
+
+
+def from_env() -> Tuple[Callable[[], Corpus], CommentSearch]:
+    """The corpus reader and comment search for this environment's Supabase, or unavailable stand-ins."""
+    url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY")
+    if not url or not key:
+        return (lambda: unavailable(NOT_CONFIGURED)), (lambda articles, q: comments_unavailable(NOT_CONFIGURED))
+    from supabase import create_client  # imported here so the app runs without it
+
+    client = create_client(url, key)
+    return reader(client), (lambda articles, q: search_comments(client, articles, q))

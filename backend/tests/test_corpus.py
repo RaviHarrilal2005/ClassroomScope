@@ -255,3 +255,57 @@ def test_an_unavailable_corpus_gives_the_same_shape_with_a_reason():
     assert payload["articles"] == {"available": False, "reason": "Database down.", "total": 0, "corpus": 0, "items": []}
     assert payload["top_topics"]["reason"] == "Database down."
     assert payload["filter_options"]["topics"] == []
+
+
+# --- search_comments ------------------------------------------------------
+
+def comment(comment_id, article_id, body, created="2026-09-01T00:00:00+00:00", recommends=0):
+    return {"comment_id": comment_id, "article_id": article_id, "body_text": body,
+            "created_at": created, "recommendation_count": recommends}
+
+
+def test_comments_are_searched_only_on_the_given_articles_newest_first():
+    client = FakeSupabase(comments=[
+        comment("c1", 1, "Cheating is rampant", created="2026-09-01T00:00:00+00:00"),
+        comment("c2", 1, "cheating again", created="2026-09-03T00:00:00+00:00", recommends=4),
+        comment("c3", 2, "Cheating elsewhere"),
+        comment("c4", 1, "Unrelated"),
+    ])
+    got = corpus.search_comments(client, [corpus_row(1, title="AI in class")], "CHEATING")
+    assert got["total"] == 2
+    assert [c["comment_id"] for c in got["comments"]] == ["c2", "c1"]
+    assert got["comments"][0] == {"comment_id": "c2", "article_id": 1, "article_title": "AI in class",
+                                  "created_at": "2026-09-03T00:00:00+00:00", "recommendation_count": 4,
+                                  "snippet": "cheating again"}
+
+
+def test_the_total_counts_every_match_but_only_the_limit_comes_back():
+    client = FakeSupabase(comments=[comment(f"c{i}", 1, "chatbot") for i in range(60)])
+    got = corpus.search_comments(client, [corpus_row(1)], "chatbot")
+    assert (got["total"], len(got["comments"])) == (60, corpus.COMMENT_LIMIT)
+
+
+@pytest.mark.parametrize("q, pattern", [
+    ("50%", "%50\\%%"),
+    ("snake_case", "%snake\\_case%"),
+    ("back\\slash", "%back\\\\slash%"),
+])
+def test_like_wildcards_in_a_search_match_literally(q, pattern):
+    client = FakeSupabase(comments=[comment("c1", 1, f"about {q} here"), comment("c2", 1, "something else")])
+    got = corpus.search_comments(client, [corpus_row(1)], q)
+    assert client.patterns == [pattern]
+    assert [c["comment_id"] for c in got["comments"]] == ["c1"]
+
+
+def test_no_articles_means_no_query():
+    client = FakeSupabase(comments=[comment("c1", 1, "chatbot")])
+    assert corpus.search_comments(client, [], "chatbot") == {"available": True, "reason": None, "total": 0, "comments": []}
+    assert client.opened == []
+
+
+def test_without_supabase_both_readers_say_why(monkeypatch):
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_KEY", raising=False)
+    read, search = corpus.from_env()
+    assert read() == corpus.unavailable(corpus.NOT_CONFIGURED)
+    assert search([corpus_row(1)], "chatbot")["reason"] == corpus.NOT_CONFIGURED
