@@ -251,8 +251,8 @@ class SecurityAgent(Agent):
             logger.warning(
                 "Run %s: article %s quarantined (%s) matched=%r",
                 ctx.run_id, row["id"], reason, result.flagged_pattern,
-                decisions.append((row["id"], result, text))
             )
+            decisions.append((row["id"], result, text))
 
         # An ID we were given but could not read is not screened, so it
         # cannot be approved. Treat it as quarantined rather than
