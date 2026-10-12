@@ -126,3 +126,107 @@ def reader(client: Any, ttl: float = CACHE_SECONDS,
         return corpus
 
     return read
+
+
+# --- filtering -------------------------------------------------------------
+
+def parse_filters(args: Mapping[str, Any]) -> Dict[str, str]:
+    """The filter query params, trimmed and checked. Raises ValueError with a message for the caller."""
+    filters = {key: (args.get(key) or "").strip() for key in FILTER_KEYS}
+    for key in ("from", "to"):
+        if filters[key]:
+            try:
+                filters[key] = datetime.strptime(filters[key], "%Y-%m-%d").date().isoformat()
+            except ValueError:
+                raise ValueError(f"'{key}' must be a date like 2026-10-08.") from None
+    if filters["from"] and filters["to"] and filters["from"] > filters["to"]:
+        raise ValueError("'from' must not be after 'to'.")
+    if filters["q"] and not 2 <= len(filters["q"]) <= 100:
+        raise ValueError("Search terms must be 2 to 100 characters.")
+    return filters
+
+
+def make_snippet(text: str, q: str, context: int = SNIPPET_CONTEXT) -> Optional[str]:
+    """About `context` characters either side of the first case-insensitive match of `q`, or None."""
+    at = text.lower().find(q.lower())
+    if at < 0:
+        return None
+    start, end = max(0, at - context), min(len(text), at + len(q) + context)
+    body = " ".join(text[start:end].split())
+    return ("…" if start > 0 else "") + body + ("…" if end < len(text) else "")
+
+
+def _day(value: Optional[str]) -> Optional[str]:
+    """The YYYY-MM-DD part of an ISO timestamp."""
+    return value[:10] if value else None
+
+
+def filter_articles(articles: Iterable[Article], filters: Mapping[str, str]) -> List[Article]:
+    """
+    The articles matching every set filter, newest first, undated last.
+
+    `q` matches the title or the text, ignoring case. Each article comes
+    back with a `snippet` from its text around the match: None when there
+    is no `q`, or when only the title matched.
+    """
+    start, end, q = filters.get("from"), filters.get("to"), filters.get("q")
+    matched = []
+    for article in articles:
+        if start or end:
+            day = _day(article.get("published_date"))
+            if day is None or (start and day < start) or (end and day > end):
+                continue
+        if any(filters.get(key) and article.get(field) != filters[key]
+               for key, field in EXACT_FILTERS.items()):
+            continue
+        snippet = None
+        if q:
+            snippet = make_snippet(article.get("clean_content") or "", q)
+            if snippet is None and q.lower() not in (article.get("title") or "").lower():
+                continue
+        matched.append({**article, "snippet": snippet})
+    matched.sort(key=lambda a: a.get("published_date") or "", reverse=True)
+    return matched
+
+
+def filter_options(articles: List[Article]) -> Dict[str, Any]:
+    """What the filter controls offer. Built from the whole corpus, so options don't vanish while filtering."""
+    days = sorted(day for day in (_day(a.get("published_date")) for a in articles) if day)
+    topics = {a["stable_topic_id"]: a["topic"] for a in articles if a.get("stable_topic_id")}
+    return {
+        "source_types": sorted({a["source_type"] for a in articles if a.get("source_type")}),
+        "stakeholders": sorted({a["stakeholder"] for a in articles if a.get("stakeholder")}),
+        "topics": sorted(({"id": i, "label": label} for i, label in topics.items()),
+                         key=lambda t: t["label"]),
+        "date_min": days[0] if days else None,
+        "date_max": days[-1] if days else None,
+    }
+
+
+def results_payload(corpus: Corpus, filters: Mapping[str, str]) -> Dict[str, Any]:
+    """The corpus-backed part of /results: top_topics, articles and filter_options."""
+    if not corpus["available"]:
+        return {
+            "top_topics": topics_unavailable(corpus["reason"]),
+            "articles": {"available": False, "reason": corpus["reason"], "total": 0, "corpus": 0, "items": []},
+            "filter_options": filter_options([]),
+        }
+    everything = corpus["articles"]
+    matched = filter_articles(everything, filters)
+    if matched:
+        topics = top_topics(matched)
+    elif any(filters.values()):
+        topics = topics_unavailable("No articles match these filters.")
+    else:
+        topics = topics_unavailable("There are no analysable articles yet.")
+    return {
+        "top_topics": topics,
+        "articles": {
+            "available": True,
+            "reason": None,
+            "total": len(matched),
+            "corpus": len(everything),
+            "items": [{field: article.get(field) for field in ARTICLE_FIELDS} for article in matched],
+        },
+        "filter_options": filter_options(everything),
+    }

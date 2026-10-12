@@ -126,3 +126,132 @@ def test_a_failed_read_is_reported_and_retried_next_time():
                      "articles": []}
     client.error = None
     assert read()["available"] is True  # the failure was not cached
+
+
+# --- parse_filters --------------------------------------------------------
+
+def test_filters_default_to_empty_and_are_trimmed():
+    assert corpus.parse_filters({}) == NO_FILTERS
+    assert corpus.parse_filters({"stakeholder": "  educators ", "q": " cheating "})["q"] == "cheating"
+
+
+@pytest.mark.parametrize("args, message", [
+    ({"from": "08/10/2026"}, "'from' must be a date"),
+    ({"to": "2026-13-01"}, "'to' must be a date"),
+    ({"from": "2026-10-02", "to": "2026-10-01"}, "'from' must not be after 'to'"),
+    ({"q": "a"}, "2 to 100 characters"),
+    ({"q": "x" * 101}, "2 to 100 characters"),
+])
+def test_bad_filters_are_rejected_with_a_reason(args, message):
+    with pytest.raises(ValueError, match=message):
+        corpus.parse_filters(args)
+
+
+def test_dates_are_normalised_so_they_compare_as_text():
+    assert corpus.parse_filters({"from": "2026-1-5"})["from"] == "2026-01-05"
+
+
+# --- filter_articles --------------------------------------------------------
+
+def test_date_range_is_inclusive_and_undated_articles_drop_out_only_when_dates_are_set():
+    rows = [corpus_row(1, published_date="2026-09-01T23:59:00+00:00"),
+            corpus_row(2, published_date="2026-09-02T00:00:00+00:00"),
+            corpus_row(3, published_date=None)]
+    assert [a["id"] for a in corpus.filter_articles(rows, filters(**{"from": "2026-09-01", "to": "2026-09-01"}))] == [1]
+    assert [a["id"] for a in corpus.filter_articles(rows, filters(**{"from": "2026-09-02"}))] == [2]
+    assert {a["id"] for a in corpus.filter_articles(rows, NO_FILTERS)} == {1, 2, 3}
+
+
+def test_exact_filters_combine():
+    rows = [corpus_row(1, source_type="blog", stakeholder="students", stable_topic_id="T001"),
+            corpus_row(2, source_type="blog", stakeholder="educators", stable_topic_id="T001"),
+            corpus_row(3, source_type="news_outlet", stakeholder="students", stable_topic_id="T001"),
+            corpus_row(4, source_type="blog", stakeholder="students", stable_topic_id="T002")]
+    got = corpus.filter_articles(rows, filters(source_type="blog", stakeholder="students", topic="T001"))
+    assert [a["id"] for a in got] == [1]
+
+
+def test_newest_first_and_undated_last():
+    rows = [corpus_row(1, published_date=None),
+            corpus_row(2, published_date="2026-01-01T00:00:00+00:00"),
+            corpus_row(3, published_date="2026-06-01T00:00:00+00:00")]
+    assert [a["id"] for a in corpus.filter_articles(rows, NO_FILTERS)] == [3, 2, 1]
+
+
+def test_search_ignores_case_and_snips_around_the_first_match():
+    text = "A" * 200 + " Students admit CHEATING with chatbots. " + "B" * 200
+    rows = [corpus_row(1, clean_content=text), corpus_row(2, clean_content="Nothing relevant.")]
+    got = corpus.filter_articles(rows, filters(q="cheating"))
+    assert [a["id"] for a in got] == [1]
+    snippet = got[0]["snippet"]
+    assert "CHEATING" in snippet
+    assert snippet.startswith("…") and snippet.endswith("…")
+    assert len(snippet) < 200
+
+
+def test_a_title_only_match_counts_but_has_no_snippet():
+    got = corpus.filter_articles([corpus_row(1, title="Cheating scandal", clean_content="Nothing here.")],
+                                 filters(q="cheating"))
+    assert [(a["id"], a["snippet"]) for a in got] == [(1, None)]
+
+
+def test_a_search_survives_missing_titles_and_text():
+    rows = [corpus_row(1, title=None, clean_content="")]
+    assert corpus.filter_articles(rows, filters(q="anything")) == []
+
+
+def test_snippets_collapse_newlines_and_skip_ellipses_at_the_edges():
+    assert corpus.make_snippet("Short\n\ntext about AI.", "ai") == "Short text about AI."
+    assert corpus.make_snippet("no match here", "ai tutor") is None
+
+
+# --- results_payload ------------------------------------------------------
+
+def test_topics_are_counted_over_the_filtered_articles_only():
+    rows = [corpus_row(1, stakeholder="students", stable_topic_id="T004", topic="Integrity"),
+            corpus_row(2, stakeholder="students", stable_topic_id=None),
+            corpus_row(3, stakeholder="educators", stable_topic_id="T001", topic="Adoption")]
+    payload = corpus.results_payload({"available": True, "reason": None, "articles": rows},
+                                     filters(stakeholder="students"))
+    assert payload["top_topics"]["items"] == [{"label": "Integrity", "count": 1}]
+    assert (payload["top_topics"]["counted"], payload["top_topics"]["unassigned"]) == (1, 1)
+    assert (payload["articles"]["total"], payload["articles"]["corpus"]) == (2, 3)
+
+
+def test_articles_go_out_without_their_text():
+    rows = [corpus_row(1, clean_content="The whole article body.")]
+    item = corpus.results_payload({"available": True, "reason": None, "articles": rows}, NO_FILTERS)["articles"]["items"][0]
+    assert "clean_content" not in item
+    assert set(item) == set(corpus.ARTICLE_FIELDS)
+
+
+def test_filter_options_come_from_the_whole_corpus():
+    rows = [corpus_row(1, source_type="blog", stakeholder="students", stable_topic_id="T004", topic="Integrity",
+                       published_date="2026-02-01T00:00:00+00:00"),
+            corpus_row(2, source_type="academic", stakeholder=None, stable_topic_id="T001", topic="Adoption",
+                       published_date="2025-11-30T00:00:00+00:00")]
+    options = corpus.results_payload({"available": True, "reason": None, "articles": rows},
+                                     filters(source_type="blog"))["filter_options"]
+    assert options == {
+        "source_types": ["academic", "blog"],
+        "stakeholders": ["students"],
+        "topics": [{"id": "T001", "label": "Adoption"}, {"id": "T004", "label": "Integrity"}],
+        "date_min": "2025-11-30",
+        "date_max": "2026-02-01",
+    }
+
+
+def test_no_matches_says_so_instead_of_drawing_an_empty_chart():
+    rows = [corpus_row(1, stakeholder="students")]
+    payload = corpus.results_payload({"available": True, "reason": None, "articles": rows},
+                                     filters(stakeholder="parents"))
+    assert payload["top_topics"]["available"] is False
+    assert payload["top_topics"]["reason"] == "No articles match these filters."
+    assert payload["articles"]["items"] == []
+
+
+def test_an_unavailable_corpus_gives_the_same_shape_with_a_reason():
+    payload = corpus.results_payload(corpus.unavailable("Database down."), NO_FILTERS)
+    assert payload["articles"] == {"available": False, "reason": "Database down.", "total": 0, "corpus": 0, "items": []}
+    assert payload["top_topics"]["reason"] == "Database down."
+    assert payload["filter_options"]["topics"] == []
