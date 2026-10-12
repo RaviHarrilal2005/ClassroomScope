@@ -11,7 +11,7 @@ building out the real views.
 
 - Flask backend (`backend/app.py`) serving the dashboard:
   - `GET /api/v1/health` — reachability check
-  - `GET /api/v1/results` — the 328 analysable articles and their topic
+  - `GET /api/v1/results` — the analysable articles (328 on 2026-10-11) and their topic
     counts, narrowed by `from`, `to`, `source_type`, `stakeholder`,
     `topic` and `q` (`orchestrator/corpus.py`). Sentiment is still a
     hardcoded placeholder
@@ -35,7 +35,6 @@ building out the real views.
 - ExportControls — see design doc Section 2 for what it needs to do
 - Auth / session context (SS-5 login) — apiClient has TODOs where the
   token will attach
-- Run-status poller
 - Real sentiment figures — the donut is still a hardcoded placeholder
   in `app.py` (see the MVP table below)
 
@@ -107,7 +106,7 @@ python run_pipeline.py                   # run once with stubs, print each stage
 python run_pipeline.py --fail topic      # see how a failing agent is handled
 python run_pipeline.py --live --backlog  # the real agents, over articles already
                                          # stored (no API quota, no downloads)
-python -m pytest tests agents/topic      # run the test suite (98 tests)
+python -m pytest tests agents/topic      # run the backend test suite
 python -m pyright backend/               # type check (from the repo root)
 ```
 
@@ -118,8 +117,10 @@ npm install
 npm run dev             # serves http://localhost:5173
 ```
 
-Open `http://localhost:5173` — you should see live data pulled from
-the Flask stub, not placeholder text.
+Open `http://localhost:5173` with `python app.py` running — you should
+see the real articles and topic counts from the database, not
+placeholder text. (`run_dev_server.py` reads no database, so its
+article table is empty.)
 
 ## MVP features — come back to these
 
@@ -161,8 +162,8 @@ already flowing through `apiClient.js` → `ViewStateContext.jsx` →
 `DashboardShell.jsx`; new components should plug into that same state
 layer rather than fetching independently.
 
-**Components to design and build** (currently missing from
-`frontend/src/components/`):
+**Components in `frontend/src/components/`** (all built except
+ExportControls):
 
 1. **FilterPanel** — built (MVP, see the table above): date range,
    source type, stakeholder, topic and keyword search, with filter
@@ -174,23 +175,22 @@ layer rather than fetching independently.
 3. **ExportControls** — UI for exporting the current view/results
    (format TBD — propose an approach if it's not obvious from the
    design doc).
-4. **AdminConsole** — a separate view/route, not part of the main
-   dashboard; scope it small for now (whatever the design doc
-   describes as minimum viable).
+4. **AdminConsole** — built: the "Pipeline runs" tab, separate from
+   the main dashboard.
 
 **Guidelines while doing this:**
 
 - Follow the three-layer split already established (data access /
   state / presentation) — don't reach into `apiClient.js` directly
   from a new component.
-- No new mock data — everything should render from the existing Flask
-  stub (`backend/app.py`) or explicitly note where the stub is missing
-  a field you need, so we can add it.
+- No new mock data — everything should render from the Flask backend
+  (`backend/app.py`) or explicitly note where it is missing a field you
+  need, so we can add it.
 - Keep PRs scoped to one component at a time so they're easy to
   review.
 - If a component's requirements are ambiguous, check the design doc
   (Section 2) first; if still unclear, flag it rather than guessing.
 
-**Not in scope this week:** auth/login (SS-5), the run-status poller,
+**Not in scope this week:** auth/login (SS-5)
 or connecting to the real Aggregation Service/Core Database — those
 come later per the steps above.

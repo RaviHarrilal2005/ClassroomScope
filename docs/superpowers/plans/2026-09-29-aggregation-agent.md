@@ -2036,6 +2036,13 @@ git commit -m "Add the store that reads the newest aggregation snapshot"
 
 ### Task 7: `/api/v1/results` serves the snapshot
 
+> **Note (2026-10):** `/results` is no longer a stub. Since the dashboard
+> MVP it serves filtered articles through `orchestrator/corpus.py`. Feed
+> the snapshot into that endpoint (or replace `corpus.read_corpus`'s live
+> read) without removing the filters or `/search/comments`; the "delete
+> the stub `get_results()`" and "keep the filter TODO" steps below are out
+> of date.
+
 This task owns the second half of Review Focus item 5.
 
 **Files:**
