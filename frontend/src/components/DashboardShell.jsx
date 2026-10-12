@@ -14,17 +14,12 @@
  * NOT built yet: FilterPanel, ExportControls. See design doc Section 2
  * for what each needs to do.
  */
-import { useEffect } from "react";
 import { useViewState } from "../state/ViewStateContext";
 import AdminConsole from "./AdminConsole";
 import { SentimentDonut, TopTopicsBar } from "./VisualizationViews";
 
 export default function DashboardShell() {
-  const { results, loading, error, loadResults } = useViewState();
-
-  useEffect(() => {
-    loadResults();
-  }, [loadResults]);
+  const { results, loading, error } = useViewState();
 
   return (
     <div style={{ fontFamily: "Arial, sans-serif", padding: "24px" }}>
