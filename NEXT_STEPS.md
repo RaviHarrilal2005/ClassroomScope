@@ -130,9 +130,10 @@ Smaller things we found while testing:
 - The dashboard can't start a backlog run, so testing the analysis
   stages needs the terminal. A "run on stored articles" button would
   fix that.
-- FilterPanel is the next feature. It needs a design decision first,
-  because the aggregation plan saves its results in a way that can't be
-  filtered yet.
+- The filter panel and keyword search exist as MVPs (README, "MVP
+  features — come back to these"). When the aggregation agent lands, its
+  snapshot can't be filtered as planned, so `/results` has to keep
+  filtering per request or the snapshot has to change shape.
 
 ### Merging dashboard-mvp and e2e-testing
 
