@@ -105,7 +105,7 @@ python run_pipeline.py                   # run once with stubs, print each stage
 python run_pipeline.py --fail topic      # see how a failing agent is handled
 python run_pipeline.py --live --backlog  # the real agents, over articles already
                                          # stored (no API quota, no downloads)
-python -m pytest                        # the offline test suite (126 tests)
+python -m pytest                        # the offline test suite (131 tests)
 python -m pyright backend/               # type check (from the repo root)
 ```
 
@@ -119,7 +119,8 @@ python -m pytest e2e                     # real pipeline over 5 stored articles,
 python -m pytest e2e --collect           # plus one real RSS + GNews collection
 ```
 Each session writes `backend/e2e/results/<date-time>/results.md` with the
-screenshots. `E2E_ENV_FILE=<file>` points the suite at another database.
+screenshots. `E2E_ENV_FILE=<file>` points the suite at another database;
+the first lines of the output name the database in use.
 The latest report: [docs/testing/e2e-test-report.md](docs/testing/e2e-test-report.md).
 
 **Front end** (separate terminal)

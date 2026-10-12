@@ -53,9 +53,10 @@ python -m pytest e2e --collect           # plus one real RSS + GNews collection
 
 Each session writes `backend/e2e/results/<date-time>/results.md` and its
 screenshots. **These commands write to the Supabase project in
-`backend/.env`.** `E2E_ENV_FILE=<file>` points them at another database.
-Plain `python -m pytest` runs only the 126 offline tests, which never
-touch the network.
+`backend/.env`.** `E2E_ENV_FILE=<file>` points them at another database,
+and the first lines of the output name the database in use. Plain
+`python -m pytest`, from `backend/` or the repo root, runs only the
+offline tests, which never touch the network.
 
 ## Results
 
@@ -160,9 +161,13 @@ day it may store some.
 ## Recommendations
 
 1. **A separate Supabase project for testing,** so these checks stop
-   writing to the team's data. The suite is ready for it: put the test
-   project's keys in `backend/.env.test` and run with
-   `E2E_ENV_FILE=.env.test`.
+   writing to the team's data. The suite needs no change for it: put the
+   test project's keys in `backend/.env.test` and run with
+   `E2E_ENV_FILE=.env.test`. The project does need setting up first:
+   the team's schema, and a copy of at least 5 stored articles that are
+   relevant and fully downloaded, with their topic rows. Every run over
+   stored articles picks the first 5 such articles, and the dashboard
+   checks run before any run has written a topic row.
 2. **Make the run note tell "nothing fetched" apart from "fetched, none
    relevant"** (problem 1).
 3. **Rerun this suite when the dashboard MVP merges,** and update D1–D3 in

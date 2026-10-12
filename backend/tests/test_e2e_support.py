@@ -18,15 +18,32 @@ from e2e.settings import credential_problem, load_e2e_env
 BACKEND = Path(__file__).resolve().parents[1]
 
 
-def test_plain_pytest_never_collects_the_end_to_end_suite():
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", "--collect-only", "-q"],
-        cwd=BACKEND, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
+def run_pytest(cwd, *args, env=None):
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", *args], cwd=cwd, env=env,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
     )
+
+
+@pytest.mark.parametrize("cwd, args", [(BACKEND, []), (BACKEND, ["."]), (BACKEND.parent, [])],
+                         ids=["backend", "backend-dot", "repo-root"])
+def test_plain_pytest_never_collects_the_end_to_end_suite(cwd, args, tmp_path):
+    # A run that so much as loads the suite's settings stops on this missing file.
+    env = {**os.environ, "E2E_ENV_FILE": str(tmp_path / "missing.env")}
+    result = run_pytest(cwd, "--collect-only", "-q", *args, env=env)
     collected = result.stdout.replace("\\", "/")
     assert result.returncode == 0, collected + result.stderr
     assert "tests/test_routes.py" in collected
     assert "e2e/" not in collected
+
+
+def test_an_end_to_end_session_names_its_database_before_it_starts(tmp_path):
+    env_file = tmp_path / "test.env"
+    env_file.write_text("SUPABASE_URL=https://test-project.supabase.co\nSUPABASE_KEY=sb_secret_x\n")
+    result = run_pytest(BACKEND, "e2e", "--collect-only", env={**os.environ, "E2E_ENV_FILE": str(env_file)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "End-to-end database: test-project.supabase.co" in result.stdout
+    assert str(env_file) in result.stdout
 
 
 def test_a_missing_e2e_env_file_stops_instead_of_using_the_shared_database(tmp_path):
@@ -34,11 +51,27 @@ def test_a_missing_e2e_env_file_stops_instead_of_using_the_shared_database(tmp_p
         load_e2e_env(str(tmp_path / "test.env"))
 
 
+def test_an_empty_e2e_env_file_stops_too(tmp_path, monkeypatch):
+    monkeypatch.setenv("E2E_ENV_FILE", "")
+    with pytest.raises(FileNotFoundError, match="E2E_ENV_FILE"):
+        load_e2e_env(default=tmp_path / ".env")
+
+
 def test_the_named_env_file_wins_over_values_already_set(tmp_path, monkeypatch):
     env_file = tmp_path / "test.env"
     env_file.write_text("SUPABASE_URL=https://test-project.supabase.co\n")
     monkeypatch.setenv("SUPABASE_URL", "https://shared-project.supabase.co")
     assert load_e2e_env(str(env_file)) == env_file
+    assert os.environ["SUPABASE_URL"] == "https://test-project.supabase.co"
+
+
+def test_values_already_set_win_over_backend_env(tmp_path, monkeypatch):
+    # As with the app's own loaders: a test project exported in the shell is kept.
+    default = tmp_path / ".env"
+    default.write_text("SUPABASE_URL=https://shared-project.supabase.co\n")
+    monkeypatch.delenv("E2E_ENV_FILE", raising=False)
+    monkeypatch.setenv("SUPABASE_URL", "https://test-project.supabase.co")
+    assert load_e2e_env(default=default) == default
     assert os.environ["SUPABASE_URL"] == "https://test-project.supabase.co"
 
 

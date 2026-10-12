@@ -22,18 +22,26 @@ SERVER_TIMEOUT = 60        # seconds: starting the servers and building the fron
 PAGE_TIMEOUT = 30_000      # milliseconds: a page load or a dashboard update
 
 
-def load_e2e_env(env_file: Optional[str] = None) -> Path:
+def load_e2e_env(env_file: Optional[str] = None, default: Path = BACKEND / ".env") -> Path:
     """
-    Load the suite's credentials, overriding anything already set.
+    Load the suite's credentials.
 
-    E2E_ENV_FILE names the file (the future test database); without it,
-    backend/.env. A named file that does not exist is an error: silently
-    falling back to backend/.env would write to the shared database while
-    you think you are testing somewhere else.
+    E2E_ENV_FILE names the file (the future test database), and its values
+    win over any already set. Without it, backend/.env, which, as with the
+    app's own loaders, never replaces a value already set. A named file that
+    does not exist, or an empty E2E_ENV_FILE, is an error: silently falling
+    back to backend/.env would write to the shared database while you think
+    you are testing somewhere else.
     """
     named = env_file if env_file is not None else os.environ.get("E2E_ENV_FILE")
-    path = Path(named) if named else BACKEND / ".env"
-    if named and not path.is_file():
+    if named is None:
+        load_dotenv(default)
+        return default
+    if not named:
+        raise FileNotFoundError("E2E_ENV_FILE is set but empty: name the env file, "
+                                "or unset it to use backend/.env.")
+    path = Path(named)
+    if not path.is_file():
         raise FileNotFoundError(f"E2E_ENV_FILE points at {path}, which does not exist.")
     load_dotenv(path, override=True)
     return path

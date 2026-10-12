@@ -1,7 +1,8 @@
 """
 End-to-end checks of the integrated pipeline, the API and the dashboard.
 
-Run from backend/ (plain `pytest` never collects this folder):
+Run from backend/ (plain `pytest`, here or from the repo root, never
+collects this folder):
 
     python -m pytest e2e              the real pipeline over 5 stored articles
     python -m pytest e2e --collect    plus one real RSS + GNews collection run
@@ -52,14 +53,32 @@ class SessionState:
 
 
 STATE: Optional[SessionState] = None
+ENV_FILE: Optional[Path] = None      # the credentials file this session loaded
+E2E = Path(__file__).resolve().parent
+
+
+def suite_named(config) -> bool:
+    """Whether the command line names this folder, or a file or test in it."""
+    for arg in config.args:
+        path = (config.invocation_params.dir / arg.split("::")[0]).resolve()
+        if path == E2E or E2E in path.parents:
+            return True
+    return False
+
+
+def pytest_ignore_collect(collection_path, config):
+    # `pytest` from the repo root, or `pytest .`, reaches this folder too.
+    return None if suite_named(config) else True
 
 
 def pytest_configure(config):
-    global STATE
+    global STATE, ENV_FILE
+    if not suite_named(config):
+        return
     # Before anything imports the app or an agent: their own load_dotenv
     # calls never override, so the values loaded here win.
     try:
-        load_e2e_env()
+        ENV_FILE = load_e2e_env()
     except FileNotFoundError as exc:
         raise pytest.UsageError(str(exc)) from None
     if config.option.collectonly:
@@ -74,6 +93,13 @@ def pytest_configure(config):
         header={"Date": now.strftime("%Y-%m-%d %H:%M"), "Branch": git_describe(), "Mode": mode},
         started_at=datetime.now(timezone.utc).isoformat(),
     )
+
+
+def pytest_report_header(config):
+    """Which database this session will write to, before it writes anything."""
+    if ENV_FILE is not None:
+        url = os.environ.get("SUPABASE_URL") or ""
+        return f"End-to-end database: {urlparse(url).hostname or url or 'not set'} (settings from {ENV_FILE})"
 
 
 def git_describe() -> str:
