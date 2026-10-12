@@ -411,6 +411,10 @@
 .data-table td:first-child {
   min-width: 260px;
 }
+/* The stage table's first column is a short name, not an article title. */
+.run-detail .data-table td:first-child {
+  min-width: 0;
+}
 .data-table a {
   font-weight: 600;
   text-decoration: none;
@@ -503,6 +507,22 @@
   font-size: 11px;
   font-weight: 600;
   color: var(--amber);
+}
+/* Phone width: tighten the stage table so all four columns fit without an
+   inner scroll. */
+@media (max-width: 480px) {
+  .run-detail {
+    padding: var(--space-3);
+  }
+  .run-detail .data-table th,
+  .run-detail .data-table td {
+    padding-right: 4px;
+    padding-left: 4px;
+  }
+  .run-detail .stub-tag {
+    display: block;
+    margin-left: 0;
+  }
 }
 .warn {
   color: var(--amber);
