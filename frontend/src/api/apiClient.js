@@ -6,10 +6,9 @@
  * auth headers, error handling, and response parsing live in one place.
  *
  * STATUS:
- *   - getResults() is wired to the /results endpoint. Its top_topics is
- *     real, counted from topic_results, and says when it is unavailable;
- *     sentiment and articles are still hardcoded until the aggregation
- *     agent exists. Treat those two as placeholder.
+ *   - getResults(filters) and searchComments(filters) are real: the
+ *     backend filters the analysable articles per request. Sentiment in
+ *     /results is still a hardcoded placeholder.
  *   - The run endpoints below are real: they read pipeline_runs and
  *     pipeline_stage_runs, and return genuine rows.
  *   - Auth token attachment, retries, and export calls are NOT built yet.
@@ -64,9 +63,21 @@ export async function checkHealth() {
   return request("/health");
 }
 
-export async function getResults(/* filters */) {
-  // TODO: serialize filters (date range, source, topic) as query params
-  return request("/results");
+/** Non-empty filter values as a query string; "" when none are set. */
+function toQuery(filters = {}) {
+  const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+/** Dashboard results for these filters (from, to, source_type, stakeholder, topic, q). */
+export async function getResults(filters) {
+  return request(`/results${toQuery(filters)}`);
+}
+
+/** Comments mentioning filters.q, on the articles the other filters allow. */
+export async function searchComments(filters) {
+  return request(`/search/comments${toQuery(filters)}`);
 }
 
 // --- pipeline runs ----------------------------------------------------
