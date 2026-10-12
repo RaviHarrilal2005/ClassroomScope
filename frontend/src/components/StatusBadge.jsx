@@ -6,22 +6,9 @@ import { statusStyle } from "./statusStyles";
 
 export default function StatusBadge({ map, status, title }) {
   const s = statusStyle(map, status);
+  // Shape lives in styles.css (.badge); only the status colours are computed here.
   return (
-    <span
-      title={title}
-      style={{
-        display: "inline-block",
-        padding: "2px 8px",
-        borderRadius: "10px",
-        fontSize: "12px",
-        fontWeight: 600,
-        lineHeight: "18px",
-        whiteSpace: "nowrap",
-        color: s.fg,
-        background: s.bg,
-        border: `1px solid ${s.border}`,
-      }}
-    >
+    <span title={title} className="badge" style={{ color: s.fg, background: s.bg, borderColor: s.border }}>
       {s.label}
     </span>
   );

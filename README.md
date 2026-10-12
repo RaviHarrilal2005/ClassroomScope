@@ -1,43 +1,44 @@
 # ClassroomScope (in progress)
 
-> **Branch `dashboard-mvp`: paused on 2026-10-08, plan awaiting approval.**
+> **Branch `dashboard-mvp-redesign`: workstream B of the dashboard MVP. Not started (2026-10-08).**
 >
-> This is the integration branch for the dashboard MVP. It covers three
-> features, all MVP (they work, but take known shortcuts we'll come back to):
+> Builds feature 3 of the MVP, a **visual redesign** with demo-ready
+> polish. It is MVP: it works, but takes known shortcuts we'll come back
+> to.
 >
-> 1. **Filter panel.** The article table lists the 328 analysable articles,
->    and filters (date range, source type, stakeholder, topic) update both
->    the topic chart and the table.
-> 2. **Keyword search.** Searches article text and the 29,658 comments,
->    showing snippets around each match.
-> 3. **Visual redesign.** A demo-ready layout: filter sidebar, chart cards,
->    styled table, and tabs for the dashboard and pipeline runs.
+> - One stylesheet, `frontend/src/styles.css`, with design tokens. It
+>   keeps the existing status palette and adds no new dependencies.
+> - A top bar with **Dashboard** and **Pipeline runs** tabs.
+> - The dashboard: a filter sidebar, Sentiment and Top topics cards side
+>   by side, then cards for the articles and the comments.
+> - The pipeline-runs console restyled with the shared classes.
+> - Below 900px wide, the sidebar stacks above the cards.
 >
-> Sentiment stays a placeholder until its agent is wired in.
+> This branch owns `frontend/src/styles.css`, `frontend/src/main.jsx`,
+> `frontend/index.html`, and these files in `frontend/src/components/`:
+> `DashboardShell.jsx`, `AdminConsole.jsx`, `StatusBadge.jsx`,
+> `VisualizationViews.jsx` and `statusStyles.js`.
 >
-> - Spec (approved): `docs/superpowers/specs/2026-10-08-dashboard-filters-redesign-design.md`
-> - Plan (written, **not yet approved**): `docs/superpowers/plans/2026-10-08-dashboard-mvp.md`
+> It never edits the filter, table or comment components, the view
+> state, the API client, or anything in `backend/`. Those belong to
+> `dashboard-mvp-filters`.
 >
-> The work is split across two branches built in parallel by subagents:
+> Its dev servers run on ports 5002 (backend) and 5175 (Vite).
 >
-> | Branch | Worktree | Builds |
-> |---|---|---|
-> | `dashboard-mvp-filters` | `../ClassroomScope-mvp-filters` | Workstream A: features 1 and 2 (backend `orchestrator/corpus.py`, the API, filter state, the three new components) |
-> | `dashboard-mvp-redesign` | `../ClassroomScope-mvp-redesign` | Workstream B: feature 3 (`styles.css`, the tabbed layout, the restyled console) |
+> - Plan: `docs/superpowers/plans/2026-10-08-dashboard-mvp.md`, Tasks B1–B3
+>   (written, **not yet approved**)
+> - Spec: `docs/superpowers/specs/2026-10-08-dashboard-filters-redesign-design.md`
 >
 > **To resume:**
 >
-> 1. Review the plan and approve it.
-> 2. Run plan Task 0 on this branch (component stubs, configurable API
->    URL), then merge this branch into both workstream branches (Task 0,
->    step 5).
-> 3. Start the two subagents, one per workstream branch.
-> 4. Run plan Task C: merge both branches back here, replace this note
->    with the README's "MVP features — come back to these" table, and
->    check the combined page.
+> 1. Approve the plan.
+> 2. Wait for Task 0 on `dashboard-mvp`, which adds the component stubs
+>    this layout imports, then run `git merge dashboard-mvp` here.
+> 3. Hand Tasks B1–B3 to a subagent working in this worktree
+>    (`../ClassroomScope-mvp-redesign`).
 >
-> Nothing in this branch is implemented yet. Delete this note when it
-> merges to `main`.
+> This branch merges back into `dashboard-mvp`, not `main`. Delete this
+> note at that merge.
 
 **Status:** front-end skeleton confirmed working end-to-end, and the
 backend pipeline coordinator's groundwork is in place (see
