@@ -1,7 +1,8 @@
 # What's left to do
 
 The pipeline runs from start to finish, but three of its seven stages
-are still placeholders, and the dashboard still shows made-up numbers.
+are still placeholders, and the dashboard's sentiment chart still shows
+made-up numbers.
 This page lists what has to change and how to tell when each part is
 done.
 
