@@ -34,7 +34,7 @@ export default function DashboardShell() {
     <>
       <header className="topbar">
         <div className="brand">
-          <span className="brand-name">ClassroomScope</span>
+          <h1 className="brand-name">ClassroomScope</h1>
           <span className="brand-tagline">Generative AI in education, as the news and its readers see it</span>
         </div>
         <nav className="tabs" aria-label="Views">

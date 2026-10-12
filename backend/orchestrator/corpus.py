@@ -2,8 +2,10 @@
 The analysable corpus for the dashboard: each article with one source
 type, stakeholder and topic, filtered and searched per request.
 
-MVP (README, "MVP features — come back to these"): this reads four
-tables and filters in Python, behind a 60-second cache. Fine at a few
+MVP (README, "MVP features — come back to these"): each corpus refresh
+reads three tables (articles, classification_results, topic_results) and
+filters in Python, behind a 60-second cache; a search also reads
+`comments`. Fine at a few
 hundred articles. The aggregation snapshot, or a Postgres view, should
 replace it once the corpus grows or the numbers must match a run.
 

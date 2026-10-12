@@ -36,7 +36,16 @@ export default function FilterPanel() {
       aria-label="Filter articles"
       onSubmit={(event) => {
         event.preventDefault();
-        setFilters({ q: draft.trim() });
+        const q = draft.trim();
+        if (q.length === 1) {
+          // minLength counts the untrimmed draft (" a" passes), but the
+          // backend rejects a 1-character term, so flag it here.
+          const input = event.currentTarget.elements["filter-q"];
+          input.setCustomValidity("Search terms must be 2 to 100 characters.");
+          input.reportValidity();
+          return;
+        }
+        setFilters({ q });
       }}
     >
       <h2>Filters</h2>
@@ -50,7 +59,10 @@ export default function FilterPanel() {
           minLength={2}
           maxLength={100}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            event.target.setCustomValidity("");
+            setDraft(event.target.value);
+          }}
         />
         <button type="submit">Search</button>
       </div>

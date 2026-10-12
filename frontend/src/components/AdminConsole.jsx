@@ -54,7 +54,7 @@ export default function AdminConsole() {
   return (
     <section aria-labelledby="console-heading">
       <div className="page-header">
-        <h1 id="console-heading">Pipeline runs</h1>
+        <h2 id="console-heading">Pipeline runs</h2>
         <span className="page-subtitle">
           Live data from <code>pipeline_runs</code>
         </span>

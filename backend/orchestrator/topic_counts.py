@@ -3,6 +3,10 @@ The dashboard's top_topics facet: articles per topic, in the shape the
 aggregation plan (docs/superpowers/plans/2026-09-29-aggregation-agent.md)
 will snapshot. Until that agent exists, orchestrator/corpus.py counts
 the filtered articles with top_topics() on each request.
+
+Unassigned articles are reported, not dropped: more than half of the
+analysed articles fit no topic, and a chart of only the assigned ones
+would hide that.
 """
 from __future__ import annotations
 

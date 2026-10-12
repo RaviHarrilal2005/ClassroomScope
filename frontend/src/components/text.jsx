@@ -10,13 +10,17 @@ export function humanize(code) {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** "2026-08-17T10:00:00+00:00" → "17 Aug 2026" in the viewer's locale; an em dash when missing. */
+/**
+ * "2026-08-17T10:00:00+00:00" → "17 Aug 2026" in the viewer's locale; an em dash when missing.
+ * Shown in UTC, not local time: the backend filters on the UTC date part,
+ * so a local date could disagree with the From/To filter.
+ */
 export function formatDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? "—"
-    : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 /** `text` with every case-insensitive occurrence of `query` wrapped in <mark>. */

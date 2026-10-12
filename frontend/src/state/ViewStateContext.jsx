@@ -89,12 +89,17 @@ export function ViewStateProvider({ children }) {
       setCommentsLoading(false);
       return;
     }
+    // Drop the previous query's comments so they never sit under the new heading.
+    setCommentResults(null);
     setCommentsLoading(true);
     try {
       const data = await searchComments(activeFilters);
       if (ticket === commentsTicket.current) setCommentResults(data);
     } catch (err) {
-      if (ticket === commentsTicket.current) setCommentsError(err.message);
+      if (ticket === commentsTicket.current) {
+        setCommentResults(null);
+        setCommentsError(err.message);
+      }
     } finally {
       if (ticket === commentsTicket.current) setCommentsLoading(false);
     }

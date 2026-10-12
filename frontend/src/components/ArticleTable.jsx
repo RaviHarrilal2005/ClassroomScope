@@ -42,7 +42,8 @@ export default function ArticleTable() {
                 return (
                   <tr key={a.id}>
                     <td>
-                      {a.url ? (
+                      {/* Only http(s) becomes a link; javascript: and the like stay plain text. */}
+                      {/^https?:\/\//i.test(a.url) ? (
                         <a href={a.url} target="_blank" rel="noreferrer">
                           {title}
                         </a>
