@@ -41,18 +41,19 @@ def build_registry(delay, failing_stages):
                               fallback=registry.get_fallback(stage))
             continue
         agent = registry.get(stage)
+        assert isinstance(agent, StubAgent)  # live=False registers stubs only
         # Collection and security run one after another; the four analysis
         # stages run at once, so give them a longer delay to make the
         # parallelism visible rather than a blur.
         agent.delay = delay * (2 if stage in ANALYSIS_STAGES else 1)
         fallback = registry.get_fallback(stage)
-        if fallback is not None:
+        if isinstance(fallback, StubAgent):
             fallback.delay = delay
     return registry
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[1])
     parser.add_argument("--fast", action="store_true", help="0.2s per stage instead of 1.5s")
     parser.add_argument("--fail", choices=PIPELINE_ORDER, action="append", default=[],
                         help="make this stage fail every time (can repeat)")
