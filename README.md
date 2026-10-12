@@ -105,7 +105,7 @@ python run_pipeline.py                   # run once with stubs, print each stage
 python run_pipeline.py --fail topic      # see how a failing agent is handled
 python run_pipeline.py --live --backlog  # the real agents, over articles already
                                          # stored (no API quota, no downloads)
-python -m pytest                        # the offline test suite (131 tests)
+python -m pytest                        # the offline test suite (133 tests)
 python -m pyright backend/               # type check (from the repo root)
 ```
 

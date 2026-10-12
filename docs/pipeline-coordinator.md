@@ -257,7 +257,7 @@ Starting a run while another is active returns `409` with the active run's ID.
 
 ## Testing plan
 
-131 offline tests, none of which touch the network: stage order, the four
+133 offline tests, none of which touch the network: stage order, the four
 analysis agents running at the same time, each failure rule, the API,
 the Supabase store against a fake client, the adapters against fake
 agent modules, and the end-to-end suite's own safety rails. The suite
