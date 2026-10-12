@@ -23,8 +23,10 @@ Which stages are real (see docs/pipeline-coordinator.md):
   classification  real - ClassificationAgent ('baseline' or 'luna')
   topic           real - TopicAgent, where BERTopic and a saved model are
                   installed; a stub elsewhere
-  sentiment       stub - agents/sentiment/ is a standalone script, not
-                  wired in yet
+  sentiment       real - agents/sentiment/ SentimentAgent, where
+                  transformers and vaderSentiment are installed (the
+                  registry builds it directly, no shell needed); a stub
+                  elsewhere
   stance          stub - no implementation on any branch yet
   aggregation     stub - no implementation yet
 """

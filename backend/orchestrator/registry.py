@@ -120,10 +120,17 @@ def build_default_registry(live: Optional[bool] = None, **collection_options) ->
         registry.register(CLASSIFICATION, agents.stub_analysis(CLASSIFICATION))
         registry.register(TOPIC, agents.stub_analysis(TOPIC))
 
-    # Nothing the pipeline can call yet: sentiment is a standalone script
-    # (agents/sentiment/), and stance has no implementation.
-    registry.register(SENTIMENT, agents.stub_analysis(SENTIMENT),
-                      fallback=agents.stub_fallback(SENTIMENT))
+    # RoBERTa leads and VADER (a word list, no model download) covers for
+    # it when the model cannot load. Without both libraries it stays
+    # stubbed, like topic. Stance has no implementation yet.
+    if live and _sentiment_available():
+        from agents.sentiment.sentiment_agent import SentimentAgent
+
+        logger.info("Registry: transformers and vaderSentiment found, using the sentiment agent")
+        registry.register(SENTIMENT, SentimentAgent(), fallback=SentimentAgent("vader"))
+    else:
+        registry.register(SENTIMENT, agents.stub_analysis(SENTIMENT),
+                          fallback=agents.stub_fallback(SENTIMENT))
     registry.register(STANCE, agents.stub_analysis(STANCE))
     registry.register(AGGREGATION, agents.stub_aggregation())
     return registry
@@ -146,6 +153,11 @@ def _luna_configured() -> bool:
     from agents.config import optional_key
 
     return bool(optional_key("TRUSSED_API_KEY") and optional_key("TRUSSED_BASE_URL"))
+
+
+def _sentiment_available() -> bool:
+    """Whether both sentiment methods can load here (checked without importing)."""
+    return all(importlib.util.find_spec(m) for m in ("transformers", "vaderSentiment"))
 
 
 def _topic_model_available() -> bool:
