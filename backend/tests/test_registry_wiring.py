@@ -14,6 +14,7 @@ import sys
 import pytest
 
 from agents.adapters import ClassificationAgent, CollectionAgent, TopicAgent
+from agents.sentiment.sentiment_agent import SentimentAgent
 from orchestrator.agents import StubAgent
 from orchestrator.registry import _luna_configured, build_default_registry
 from orchestrator.stages import (
@@ -28,7 +29,7 @@ from orchestrator.stages import (
 )
 
 REAL_STAGES = (COLLECTION, SECURITY, CLASSIFICATION)
-STILL_STUBBED = (SENTIMENT, STANCE, AGGREGATION)
+STILL_STUBBED = (STANCE, AGGREGATION)
 
 
 def test_every_stage_has_an_agent_either_way():
@@ -128,8 +129,31 @@ def test_a_git_lfs_pointer_is_not_mistaken_for_the_model(monkeypatch, topic_mode
     assert "git lfs pull" in caplog.text
 
 
-def test_sentiment_keeps_its_fallback():
-    assert build_default_registry(live=True).get_fallback(SENTIMENT) is not None
+def libraries_installed(monkeypatch, installed):
+    """Make transformers and vaderSentiment look installed or not."""
+    real = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name, package=None: (
+        (object() if installed else None) if name in ("transformers", "vaderSentiment")
+        else real(name, package)))
+
+
+def test_sentiment_runs_roberta_with_vader_behind_it(monkeypatch):
+    libraries_installed(monkeypatch, True)
+    registry = build_default_registry(live=True)
+    primary, fallback = registry.get(SENTIMENT), registry.get_fallback(SENTIMENT)
+    assert isinstance(primary, SentimentAgent) and primary.method == "roberta_news"
+    assert isinstance(fallback, SentimentAgent) and fallback.method == "vader"
+
+
+def test_sentiment_stays_stubbed_where_its_libraries_are_missing(monkeypatch):
+    libraries_installed(monkeypatch, False)
+    registry = build_default_registry(live=True)
+    assert isinstance(registry.get(SENTIMENT), StubAgent)
+    assert registry.get_fallback(SENTIMENT) is not None
+
+
+def test_sentiment_is_a_stub_without_live():
+    assert isinstance(build_default_registry(live=False).get(SENTIMENT), StubAgent)
 
 
 def test_collection_options_reach_the_collection_agent():

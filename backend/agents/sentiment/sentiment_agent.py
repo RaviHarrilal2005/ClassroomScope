@@ -27,6 +27,8 @@ the first time they are needed.
 import re
 import sys
 
+from orchestrator.agents import Agent
+
 MODEL_NAME = "Jean-Baptiste/roberta-large-financial-news-sentiment-en"
 METHODS = ("roberta_news", "vader")
 
@@ -49,11 +51,12 @@ _vader = None
 
 def load_roberta():
     global _sentiment_model, _tokenizer
-    if _sentiment_model is None:
+    if _sentiment_model is None or _tokenizer is None:
         from transformers import pipeline, AutoTokenizer
 
-        _tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        _sentiment_model = pipeline("text-classification", model=MODEL_NAME, tokenizer=_tokenizer)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        _sentiment_model = pipeline("text-classification", model=MODEL_NAME, tokenizer=tokenizer)
+        _tokenizer = tokenizer
     return _sentiment_model, _tokenizer
 
 
@@ -104,7 +107,7 @@ def analyze_sentiment(text):
     for label in scores:
         scores[label] = scores[label] / total_tokens
 
-    final_sentiment = max(scores, key=scores.get)
+    final_sentiment = max(scores, key=lambda label: scores[label])
     confidence = scores[final_sentiment]
 
     return final_sentiment, confidence, scores
@@ -261,7 +264,7 @@ def save_results(database, rows):
 
 # ---------------- the agent ----------------
 
-class SentimentAgent:
+class SentimentAgent(Agent):
     """
     Pipeline agent. run(ctx) labels the approved articles that do not
     have a result from this method yet and writes them to sentiment_results.

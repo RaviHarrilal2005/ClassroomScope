@@ -30,10 +30,13 @@ bertopic>=0.16
 umap-learn>=0.5
 scikit-learn>=1.3
 
+# --- agents/sentiment ----------------------------------------------------
+# RoBERTa (transformers, on the torch above) and the VADER baseline. The
+# sentiment stage stays stubbed where either is missing.
+transformers>=4.40
+vaderSentiment>=3.3
+
 # NOT required to run the pipeline:
 #   psycopg2-binary  - only agents/security/filter_validation.py and
 #                      quarantine.py, which use a direct Postgres
 #                      connection rather than PostgREST
-#   transformers, vaderSentiment
-#                    - only agents/sentiment/sentiment_agent.py, a
-#                      standalone script the pipeline does not run yet

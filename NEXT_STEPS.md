@@ -55,42 +55,21 @@ Two words you'll see on the dashboard:
 | Security | real | MDalien, vmarkkk |
 | Classification | real | Juan |
 | Topic | real (needs Git LFS, see above) | Esmeralda |
-| Sentiment | stub: the script works, but the pipeline can't call it yet | Deena |
+| Sentiment | real (needs `transformers` + `vaderSentiment`, see requirements.txt) | Deena |
 | Stance | stub: no code yet | TBD |
 | Aggregation | stub: planned, starts after sentiment | Ravi |
 
-## 1. Sentiment: turn the script into an agent (Deena)
+## 1. Sentiment: done, check it on a real run (Deena)
 
-`backend/agents/sentiment/sentiment_agent.py` already works. Its 254
-results are in the `sentiment_results` table. But it's built to be run
-by hand: as soon as the file is opened it loads the models, reads
-`articles_rows.csv` (an export someone downloaded from Supabase),
-labels every article in it, and writes CSV files for someone to upload.
-The pipeline needs to call it on the articles from one run instead.
+`SentimentAgent` is registered in `orchestrator/registry.py`: RoBERTa
+first, VADER if the model can't load. It stays a stub where
+`transformers` or `vaderSentiment` isn't installed.
 
-1. Move the work into functions, so nothing runs when the file is
-   imported. Load the models inside a function, the first time they're
-   needed.
-2. Read the articles from Supabase instead of the CSV. Use
-   `get_client()` from `agents/supabase_client.py`, and only fetch the
-   IDs the pipeline gives you (`ctx.approved_ids`).
-3. Write each result straight into `sentiment_results` (`article_id`,
-   `sentiment`, `confidence`, `method`) instead of into a CSV.
-4. Don't hide failures. If the step can't run at all (no model, no
-   database), raise an error instead of printing it. The pipeline
-   retries failed stages and records the error on the dashboard.
-5. Add `transformers` and `vaderSentiment` to `backend/requirements.txt`.
-6. Add a `SentimentAgent` to `agents/adapters.py` and register it in
-   `orchestrator/registry.py`. `TopicAgent` in `adapters.py` is a good
-   one to copy. This step can also happen when your branch gets
-   merged, the way the other agents were connected.
-
-The full checklist for plugging in an agent is in
-[docs/pipeline-coordinator.md](docs/pipeline-coordinator.md#for-agent-owners-plugging-in-your-agent).
-
-Done when: `python run_pipeline.py --live --backlog --limit 5` shows
-sentiment as `succeeded`, and `sentiment_results` has new rows for
-those 5 articles.
+To check it: `python run_pipeline.py --live --backlog --limit 5` should
+show sentiment as `succeeded`, and `sentiment_results` should have new
+rows for those 5 articles. The first RoBERTa run downloads the model
+(over 1 GB). VADER was checked against real articles; the RoBERTa path
+has not been run through the pipeline yet.
 
 ## 2. Stance (TBD)
 

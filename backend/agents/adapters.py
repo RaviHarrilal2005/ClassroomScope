@@ -23,8 +23,10 @@ Which stages are real (see docs/pipeline-coordinator.md):
   classification  real - ClassificationAgent ('baseline' or 'luna')
   topic           real - TopicAgent, where BERTopic and a saved model are
                   installed; a stub elsewhere
-  sentiment       stub - agents/sentiment/ is a standalone script, not
-                  wired in yet
+  sentiment       real - agents/sentiment/ SentimentAgent, where
+                  transformers and vaderSentiment are installed (the
+                  registry builds it directly, no shell needed); a stub
+                  elsewhere
   stance          stub - no implementation on any branch yet
   aggregation     stub - no implementation yet
 """
@@ -251,8 +253,8 @@ class SecurityAgent(Agent):
             logger.warning(
                 "Run %s: article %s quarantined (%s) matched=%r",
                 ctx.run_id, row["id"], reason, result.flagged_pattern,
-                decisions.append((row["id"], result, text))
             )
+            decisions.append((row["id"], result, text))
 
         # An ID we were given but could not read is not screened, so it
         # cannot be approved. Treat it as quarantined rather than

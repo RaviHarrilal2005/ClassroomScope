@@ -3,7 +3,7 @@
 **Status: running end to end, verified against the live database.**
 The sequencing and failure handling are built and tested (98 tests).
 Collection, security, classification and topic are the team's real
-agents; sentiment, stance and aggregation are still stubs — see
+agents; stance and aggregation are still stubs — see
 [Which agents are real](#which-agents-are-real). The topic stage and
 collection's LLM relevance check were wired in after the verified run
 below, and have not had a live run yet.
@@ -73,7 +73,7 @@ backend/
     security/               sanitization filter + its adversarial suite
     classification/         stakeholder and source-type classifiers
     topic/                  saved BERTopic model + its offline tests
-    sentiment/              RoBERTa + VADER sentiment — standalone, stage still stubbed
+    sentiment/              RoBERTa + VADER sentiment (SentimentAgent, wired into the registry)
   tests/                    95 tests (more get added as features land)
   .env                      credentials — gitignored, never commit
 docs/
@@ -95,7 +95,7 @@ package without touching sequencing code.
 | Collection | **real** | `agents/collection/` — NewsAPI, GNews and eight RSS feeds, then dedupe, a keyword filter, an LLM relevance check and body extraction |
 | Security | **real** | `agents/security/` — sanitization filter; see below |
 | Classification | **real** | `agents/classification/` — LLM classifier when `TRUSSED_API_KEY` is set, keyword scorer otherwise or as its fallback |
-| Sentiment | stub | `agents/sentiment/sentiment_agent.py` runs standalone over a CSV export — see below |
+| Sentiment | real (stub where transformers/vaderSentiment are missing) | `agents/sentiment/sentiment_agent.py`, RoBERTa with VADER as the fallback |
 | Stance | stub | no implementation on any branch yet |
 | Topic | **real** where its model is | `agents/topic/` — topics from a saved BERTopic model, stored in the repo with Git LFS; a stub on machines without it — see below |
 | Aggregation | stub | not written yet |
@@ -202,17 +202,13 @@ registry, the tests and the dev server never load it.
 `pyrightconfig.json` still excludes the package; its offline tests run
 with `python -m pytest agents/topic`.
 
-### Sentiment — not wired in yet
+### Sentiment
 
-`agents/sentiment/sentiment_agent.py` labels each article with a
-news-trained RoBERTa model, with VADER as a baseline to compare against.
-It is a script: it reads a CSV export of `articles` and writes CSV
-files, which were uploaded by hand to `sentiment_results` (254 rows
-today). It loads its models and reads that CSV as soon as it is
-imported, so the pipeline cannot call it as it stands. Wiring it in
-means moving that work into functions, and adding a `SentimentAgent`
-adapter that reads the approved articles and writes `sentiment_results`
-(`article_id`, `sentiment`, `confidence`, `method`) itself.
+`agents/sentiment/sentiment_agent.py` labels each approved article with a
+news-trained RoBERTa model, with VADER as the fallback. It reads the
+run's articles from Supabase, skips ones that already have a result from
+that method, and writes `sentiment_results` itself. Nothing loads at
+import; the models load on first use.
 
 ## Running it
 

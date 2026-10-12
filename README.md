@@ -49,9 +49,9 @@ keeps the results of stages that succeeded when another fails.
   dedupe, keyword then LLM relevance check, body extraction), security
   (content sanitization screening), classification (stakeholder and
   source type) and topic (a saved BERTopic model, stored in the repo with
-  Git LFS; where it is missing, topic stays a stub). Sentiment exists as
-  a standalone script that is not wired in
-  yet; stance and aggregation have no implementation. Each owner's code
+  Git LFS; where it is missing, topic stays a stub). Sentiment (RoBERTa, with
+  VADER as its fallback) runs where `transformers` and `vaderSentiment`
+  are installed; stance and aggregation have no implementation. Each owner's code
   lives in `backend/agents/<stage>/`.
 - The registry picks real agents when Supabase is configured and stubs
   otherwise, so the app and the tests still work without credentials.
