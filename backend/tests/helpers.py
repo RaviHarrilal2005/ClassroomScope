@@ -11,7 +11,7 @@ def failing(name="broken"):
     return StubAgent(name, fail_times=-1)
 
 
-def build_client(registry=None, read_topics=None):
+def build_client(registry=None, read_corpus=None, search_comments=None):
     """Flask test client wired to a coordinator that doesn't actually wait between retries."""
     from app import create_app
 
@@ -19,6 +19,6 @@ def build_client(registry=None, read_topics=None):
         registry or build_default_registry(live=False), InMemoryRunStore(), sleep=lambda seconds: None,
     )
     runner = BackgroundRunner(coordinator)
-    app = create_app(runner=runner, read_topics=read_topics)
+    app = create_app(runner=runner, read_corpus=read_corpus, search_comments=search_comments)
     app.testing = True
     return app.test_client(), runner
