@@ -66,6 +66,12 @@ export function ViewStateProvider({ children }) {
     }
   }, []);
 
+  // The dashboard's results load once on mount. Workstream A replaces
+  // this with an effect that reloads whenever the filters change.
+  useEffect(() => {
+    loadResults();
+  }, [loadResults]);
+
   const loadRuns = useCallback(async () => {
     try {
       const data = await getRuns(20);
