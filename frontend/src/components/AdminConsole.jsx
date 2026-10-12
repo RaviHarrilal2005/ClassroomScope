@@ -1,11 +1,8 @@
 /**
  * Admin Console — start a pipeline run and watch it progress.
  *
- * This is the one dashboard view backed by real data today. It reads
- * pipeline_runs and pipeline_stage_runs through the run endpoints, which
- * return genuine rows. Of the results views above it, only top topics is
- * real so far; sentiment and articles still render hardcoded /results
- * data, because no aggregation agent exists yet.
+ * It reads pipeline_runs and pipeline_stage_runs through the run
+ * endpoints, which return genuine rows.
  *
  * Three things the backend does that this UI has to account for:
  *
@@ -41,25 +38,6 @@ import {
 // can't see; the fix is for the backend to report which agent ran.
 const STUBBED_STAGES = ["sentiment", "stance", "aggregation"];
 
-const card = {
-  border: "1px solid #DDD",
-  borderRadius: "4px",
-  background: "#FFF",
-  padding: "16px",
-};
-
-const th = {
-  textAlign: "left",
-  borderBottom: "1px solid #CCC",
-  padding: "6px 8px",
-  fontSize: "12px",
-  textTransform: "uppercase",
-  letterSpacing: "0.03em",
-  color: "#555",
-};
-
-const td = { padding: "6px 8px", borderBottom: "1px solid #EEE", fontSize: "14px" };
-
 export default function AdminConsole() {
   const {
     runs,
@@ -74,56 +52,28 @@ export default function AdminConsole() {
   const isActive = activeRunId !== null;
 
   return (
-    <section style={{ marginTop: "28px" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: "12px", flexWrap: "wrap" }}>
-        <h3 style={{ margin: 0 }}>Admin console</h3>
-        <span style={{ fontSize: "13px", color: "#666" }}>
-          Pipeline runs — live data from <code>pipeline_runs</code>
+    <section aria-labelledby="console-heading">
+      <div className="page-header">
+        <h2 id="console-heading">Pipeline runs</h2>
+        <span className="page-subtitle">
+          Live data from <code>pipeline_runs</code>
         </span>
       </div>
 
-      <div style={{ display: "flex", gap: "12px", alignItems: "center", margin: "12px 0", flexWrap: "wrap" }}>
-        <button
-          onClick={() => triggerRun("manual")}
-          disabled={starting || isActive}
-          style={{
-            padding: "8px 16px",
-            fontSize: "14px",
-            fontWeight: 600,
-            borderRadius: "4px",
-            border: "none",
-            color: "#FFF",
-            background: starting || isActive ? "#9BB4C9" : "#1F4E79",
-            cursor: starting || isActive ? "not-allowed" : "pointer",
-          }}
-        >
+      <div className="console-actions">
+        <button type="button" onClick={() => triggerRun("manual")} disabled={starting || isActive}>
           {starting ? "Starting…" : isActive ? "Run in progress…" : "Start a run"}
         </button>
-
-        {isActive && (
-          <span style={{ fontSize: "13px", color: "#666" }}>
-            Only one run may be active at a time.
-          </span>
-        )}
+        {isActive && <span className="muted">Only one run may be active at a time.</span>}
       </div>
 
       {runsError && (
-        <p
-          role="status"
-          style={{
-            color: "#8A5A00",
-            background: "#FDF1DC",
-            border: "1px solid #F0D9A8",
-            padding: "8px 12px",
-            borderRadius: "4px",
-            fontSize: "14px",
-          }}
-        >
+        <p className="notice" role="status">
           {runsError}
         </p>
       )}
 
-      <div style={{ display: "flex", gap: "16px", alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div className="console-grid">
         <RunDetail run={selectedRun} />
         <RunList runs={runs} selectedId={selectedRun?.id} activeRunId={activeRunId} onSelect={selectRun} />
       </div>
@@ -134,8 +84,8 @@ export default function AdminConsole() {
 function RunDetail({ run }) {
   if (!run) {
     return (
-      <div style={{ ...card, flex: "2 1 460px", color: "#666" }}>
-        No runs yet. Start one to see it here.
+      <div className="card run-detail">
+        <p className="muted">No runs yet. Start one to see it here.</p>
       </div>
     );
   }
@@ -145,61 +95,61 @@ function RunDetail({ run }) {
   );
 
   return (
-    <div style={{ ...card, flex: "2 1 460px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-        <strong style={{ fontSize: "15px" }}>Run #{run.id}</strong>
+    <div className="card run-detail">
+      <div className="run-summary">
+        <strong className="run-title">Run #{run.id}</strong>
         <StatusBadge map={RUN_STATUS} status={run.status} />
-        <span style={{ fontSize: "13px", color: "#666" }}>
+        <span className="muted">
           {run.trigger_type} · started {formatTime(run.started_at)} ·{" "}
           {formatDuration(run.started_at, run.finished_at)}
           {run.articles_collected != null && ` · ${run.articles_collected} article(s)`}
         </span>
       </div>
 
-      {run.notes && (
-        <p style={{ fontSize: "13px", color: "#444", margin: "10px 0 0" }}>{run.notes}</p>
-      )}
+      {run.notes && <p className="run-notes">{run.notes}</p>}
 
-      <table style={{ borderCollapse: "collapse", width: "100%", marginTop: "12px" }}>
-        <thead>
-          <tr>
-            <th style={th}>Stage</th>
-            <th style={th}>Status</th>
-            <th style={th}>Attempt</th>
-            <th style={th}>Duration</th>
-          </tr>
-        </thead>
-        <tbody>
-          {run.stages.map((stage) => (
-            <tr key={stage.id}>
-              <td style={td}>
-                {stage.stage_name}
-                {STUBBED_STAGES.includes(stage.stage_name) && (
-                  <span
-                    title="No agent implementation yet — this stage reports success without doing work"
-                    style={{ marginLeft: "6px", fontSize: "11px", color: "#8A5A00" }}
-                  >
-                    stub
-                  </span>
-                )}
-              </td>
-              <td style={td}>
-                <StatusBadge map={STAGE_STATUS} status={stage.status} />
-              </td>
-              <td style={{ ...td, color: stage.attempt > 1 ? "#8A5A00" : "inherit" }}>
-                {stage.attempt || "—"}
-                {stage.attempt > 1 && " (retried)"}
-              </td>
-              <td style={td}>{formatDuration(stage.started_at, stage.finished_at)}</td>
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th scope="col">Stage</th>
+              <th scope="col">Status</th>
+              <th scope="col">Attempt</th>
+              <th scope="col">Duration</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {run.stages.map((stage) => (
+              <tr key={stage.id}>
+                <td>
+                  {stage.stage_name}
+                  {STUBBED_STAGES.includes(stage.stage_name) && (
+                    <span
+                      className="stub-tag"
+                      title="No agent implementation yet — this stage reports success without doing work"
+                    >
+                      stub
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <StatusBadge map={STAGE_STATUS} status={stage.status} />
+                </td>
+                <td className={stage.attempt > 1 ? "warn" : undefined}>
+                  {stage.attempt || "—"}
+                  {stage.attempt > 1 && " (retried)"}
+                </td>
+                <td>{formatDuration(stage.started_at, stage.finished_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <StageDetails stages={run.stages} />
 
       {stubbedThatRan.length > 0 && (
-        <p style={{ fontSize: "12px", color: "#8A5A00", marginTop: "12px" }}>
+        <p className="stub-note">
           {stubbedThatRan.length} stage(s) marked <em>stub</em> reported success without
           analysing anything — no agent is implemented for them yet.
         </p>
@@ -226,36 +176,18 @@ function StageDetails({ stages }) {
 
   return (
     <>
-      {failures.length > 0 && (
-        <DetailBlock title="Errors" stages={failures} tone="#A33A34" />
-      )}
-      {recoveries.length > 0 && (
-        <DetailBlock title="Recovered" stages={recoveries} tone="#8A5A00" />
-      )}
+      {failures.length > 0 && <DetailBlock title="Errors" stages={failures} tone="error" />}
+      {recoveries.length > 0 && <DetailBlock title="Recovered" stages={recoveries} tone="recovered" />}
     </>
   );
 }
 
 function DetailBlock({ title, stages, tone }) {
   return (
-    <div style={{ marginTop: "12px" }}>
-      <strong style={{ fontSize: "13px", color: tone }}>{title}</strong>
+    <div className={`detail-block ${tone}`}>
+      <strong className="detail-title">{title}</strong>
       {stages.map((s) => (
-        <p
-          key={s.id}
-          style={{
-            fontSize: "12px",
-            fontFamily: "Consolas, monospace",
-            background: "#FAFAFA",
-            border: "1px solid #EEE",
-            borderLeft: `3px solid ${tone}`,
-            borderRadius: "3px",
-            padding: "6px 8px",
-            margin: "6px 0 0",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
+        <p key={s.id}>
           <strong>{s.stage_name}:</strong> {s.error_detail}
         </p>
       ))}
@@ -265,41 +197,22 @@ function DetailBlock({ title, stages, tone }) {
 
 function RunList({ runs, selectedId, activeRunId, onSelect }) {
   return (
-    <div style={{ ...card, flex: "1 1 260px", padding: "12px" }}>
-      <strong style={{ fontSize: "13px" }}>Recent runs</strong>
-      {runs.length === 0 && (
-        <p style={{ fontSize: "13px", color: "#666" }}>None yet.</p>
-      )}
-      <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
+    <div className="card run-list">
+      <h2 className="run-list-title">Recent runs</h2>
+      {runs.length === 0 && <p className="muted">None yet.</p>}
+      <ul className="run-items">
         {runs.map((run) => (
           <li key={run.id}>
             <button
+              type="button"
+              className="run-item"
+              aria-pressed={run.id === selectedId}
               onClick={() => onSelect(run.id)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "8px",
-                width: "100%",
-                textAlign: "left",
-                padding: "7px 8px",
-                marginBottom: "2px",
-                fontSize: "13px",
-                border: "1px solid transparent",
-                borderRadius: "3px",
-                cursor: "pointer",
-                background: run.id === selectedId ? "#E1EDF8" : "transparent",
-                borderColor: run.id === selectedId ? "#B9D4EC" : "transparent",
-              }}
             >
               <span>
                 #{run.id}
-                {run.id === activeRunId && (
-                  <span style={{ color: "#1F4E79", fontWeight: 600 }}> · live</span>
-                )}
-                <span style={{ display: "block", color: "#777", fontSize: "11px" }}>
-                  {formatTime(run.started_at)}
-                </span>
+                {run.id === activeRunId && <span className="live-tag"> · live</span>}
+                <span className="run-time">{formatTime(run.started_at)}</span>
               </span>
               <StatusBadge map={RUN_STATUS} status={run.status} />
             </button>

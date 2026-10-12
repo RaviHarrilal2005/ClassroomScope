@@ -9,33 +9,34 @@ building out the real views.
 
 ## What's working right now
 
-- Flask backend (`backend/app.py`) serving two endpoints:
+- Flask backend (`backend/app.py`) serving the dashboard:
   - `GET /api/v1/health` — reachability check
-  - `GET /api/v1/results` — topic counts read live from
-    `topic_results`; the sentiment and article parts are still stub
-    data shaped like what the real Aggregation Service will return
+  - `GET /api/v1/results` — the analysable articles (328 on 2026-10-11) and their topic
+    counts, narrowed by `from`, `to`, `source_type`, `stakeholder`,
+    `topic` and `q` (`orchestrator/corpus.py`). Sentiment is still a
+    hardcoded placeholder
+  - `GET /api/v1/search/comments` — keyword search over the article
+    comments, on the articles the other filters allow
 - React front end (`frontend/`) with the three layers from the design
   doc partially built:
   - **Data access layer** (`src/api/apiClient.js`) — the single client
     that talks to Flask
   - **State layer** (`src/state/ViewStateContext.jsx`) — holds results,
     loading, and error state
-  - **Presentation layer** (`src/components/DashboardShell.jsx`) — one
-    view, rendering sentiment breakdown and an article list pulled
-    live from the Flask stub
+  - **Presentation layer** (`src/components/`) — a Dashboard tab
+    (filter panel, sentiment and topic charts, article table, comment
+    search) and a Pipeline runs tab, styled from `src/styles.css`
 - Verified end to end: `npm run dev` + `python app.py` together produce
   a page that fetches real JSON from Flask and renders it. No mock data
   baked into the front end.
 
 ## What's NOT built yet
 
-- FilterPanel and ExportControls — see design doc Section 2 for what
-  each needs to do
+- ExportControls — see design doc Section 2 for what it needs to do
 - Auth / session context (SS-5 login) — apiClient has TODOs where the
   token will attach
-- Run-status poller
-- Real data — everything above is served from a hardcoded stub in
-  `app.py`, not the actual Core Database
+- Real sentiment figures — the donut is still a hardcoded placeholder
+  in `app.py` (see the MVP table below)
 
 ## Pipeline coordinator (in progress)
 
@@ -105,7 +106,7 @@ python run_pipeline.py                   # run once with stubs, print each stage
 python run_pipeline.py --fail topic      # see how a failing agent is handled
 python run_pipeline.py --live --backlog  # the real agents, over articles already
                                          # stored (no API quota, no downloads)
-python -m pytest tests agents/topic      # run the test suite (98 tests)
+python -m pytest tests agents/topic      # run the backend test suite
 python -m pyright backend/               # type check (from the repo root)
 ```
 
@@ -116,12 +117,38 @@ npm install
 npm run dev             # serves http://localhost:5173
 ```
 
-Open `http://localhost:5173` — you should see live data pulled from
-the Flask stub, not placeholder text.
+Open `http://localhost:5173` with `python app.py` running — you should
+see the real articles and topic counts from the database, not
+placeholder text. (`run_dev_server.py` reads no database, so its
+article table is empty.)
+
+## MVP features — come back to these
+
+The filter panel, keyword search and visual redesign (October 2026) are
+MVPs: they work end to end, but each takes shortcuts on purpose. Design:
+`docs/superpowers/specs/2026-10-08-dashboard-filters-redesign-design.md`.
+
+| Feature | Shortcut | Ceiling | Better version |
+|---|---|---|---|
+| Filters | Corpus read from 3 tables and filtered in Python per request, behind a 60s cache (`orchestrator/corpus.py`) | Slows as the corpus grows; up to 60s stale after a run | Aggregation snapshot or a Postgres view/RPC |
+| Filters | One value per filter | Can't compare two stakeholders | Multi-select |
+| Filters | Not kept in the URL; nor is the Dashboard / Pipeline runs tab | A filtered view can't be shared, bookmarked or survive a refresh | Sync filters and view to the query string |
+| Filters | Topic options are the full list, not narrowed by the other filters | Some combinations give zero rows | Facet counts per option |
+| Filters | Classification merge: any classifier beats `baseline_keyword` | Hides disagreement between classifiers | Record a chosen classifier per article in the pipeline |
+| Filters | A request per filter change, no debounce or cancel (stale responses are dropped, not aborted) | Wasted requests while typing a date | Debounce dates; `AbortController` |
+| Article table | Every match rendered, no paging | Fine at hundreds, not thousands | Server-side paging |
+| Search | Case-insensitive substring, first match only | No ranking, stemming or phrases | Postgres full-text search (`tsvector`) with ranking |
+| Search | `*` acts as a wildcard (PostgREST has no escape for it) | `a*b` matches more than it says | Search through an RPC function |
+| Search | Comment search capped at the newest 50, no paging; article IDs sent in the URL | Can't browse all matches; breaks past ~1,500 articles | Paging, and an RPC taking the filters |
+| Dashboard | Sentiment donut is a hardcoded placeholder | Not real data, and filters don't move it | Aggregate `sentiment_results` once the agent is wired in |
+| Redesign | Light theme only; badge colours inline in `StatusBadge` | Ignores an OS dark-mode preference | `prefers-color-scheme` token set, badge colours as tokens |
+| Redesign | Topic chart labels wrap to two lines at most | Labels over ~56 characters clip | Measure text, or wrap to N lines |
+| Pipeline runs | All 20 recent runs listed; Start a run has no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
+| Frontend | No frontend tests | Regressions caught by eye | Vitest + Testing Library |
 
 ## Next steps (planned)
 
-1. Build FilterPanel and wire it into ViewStateContext
+1. Work through the MVP table above
 2. Connect apiClient to the real Data Access Layer once SS-1/SS-2/SS-3
    are integrated (see WBS, tasks under 4.5)
 3. Add auth context once SS-5 login exists
@@ -135,12 +162,12 @@ already flowing through `apiClient.js` → `ViewStateContext.jsx` →
 `DashboardShell.jsx`; new components should plug into that same state
 layer rather than fetching independently.
 
-**Components to design and build** (currently missing from
-`frontend/src/components/`):
+**Components in `frontend/src/components/`** (all built except
+ExportControls):
 
-1. **FilterPanel** — controls for narrowing the results shown in
-   `DashboardShell`. Should read/write filter state via
-   `ViewStateContext.jsx` rather than owning its own state.
+1. **FilterPanel** — built (MVP, see the table above): date range,
+   source type, stakeholder, topic and keyword search, with filter
+   state in `ViewStateContext.jsx`.
 2. **VisualizationViews** — built (`VisualizationViews.jsx`, using
    Recharts): a sentiment donut and a top-topics bar chart. New chart
    types should use Recharts too. The article list stays a table: a
@@ -148,23 +175,22 @@ layer rather than fetching independently.
 3. **ExportControls** — UI for exporting the current view/results
    (format TBD — propose an approach if it's not obvious from the
    design doc).
-4. **AdminConsole** — a separate view/route, not part of the main
-   dashboard; scope it small for now (whatever the design doc
-   describes as minimum viable).
+4. **AdminConsole** — built: the "Pipeline runs" tab, separate from
+   the main dashboard.
 
 **Guidelines while doing this:**
 
 - Follow the three-layer split already established (data access /
   state / presentation) — don't reach into `apiClient.js` directly
   from a new component.
-- No new mock data — everything should render from the existing Flask
-  stub (`backend/app.py`) or explicitly note where the stub is missing
-  a field you need, so we can add it.
+- No new mock data — everything should render from the Flask backend
+  (`backend/app.py`) or explicitly note where it is missing a field you
+  need, so we can add it.
 - Keep PRs scoped to one component at a time so they're easy to
   review.
 - If a component's requirements are ambiguous, check the design doc
   (Section 2) first; if still unclear, flag it rather than guessing.
 
-**Not in scope this week:** auth/login (SS-5), the run-status poller,
+**Not in scope this week:** auth/login (SS-5)
 or connecting to the real Aggregation Service/Core Database — those
 come later per the steps above.
