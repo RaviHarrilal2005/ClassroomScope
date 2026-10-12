@@ -335,6 +335,11 @@
   max-width: 480px;
   margin: 0 auto;
 }
+/* Pie labels sit outside the ring and can cross the SVG edge on a phone;
+   the card's padding has room for them. */
+.chart-donut .recharts-surface {
+  overflow: visible;
+}
 .recharts-text {
   font-family: var(--font);
   font-size: var(--text-sm);
