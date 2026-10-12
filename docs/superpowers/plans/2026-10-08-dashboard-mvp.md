@@ -141,7 +141,7 @@ cp backend/.env ../ClassroomScope-mvp-redesign/backend/.env
 
 # Workstream A: filters and keyword search
 
-Worktree: `C:/Users/ravid/Projects/ClassroomScope-mvp-filters`, branch `dashboard-mvp-filters`. Run Python from `backend/`. The baseline suite is **111 passed**.
+Worktree: `C:/Users/ravid/Projects/ClassroomScope-mvp-filters`, branch `dashboard-mvp-filters`. Run Python from `backend/`. The baseline suite is **113 passed**.
 
 ## Task A1: Read the analysable corpus
 
@@ -1249,7 +1249,7 @@ with:
 - [ ] **Step 8: Run the whole suite**
 
 Run: `python -m pytest -q`
-Expected: `150 passed` (111 before, minus 4 removed, plus 34 + 9 new). Then `grep -rn "read_topics\|reader_from_env" backend` finds nothing.
+Expected: `152 passed` (113 before, minus 4 removed, plus 34 + 9 new). Then `grep -rn "read_topics\|reader_from_env" backend` finds nothing.
 
 - [ ] **Step 9: Check the endpoints against the real database (read-only)**
 
@@ -2978,7 +2978,7 @@ Expected: one conflict, in the branch note at the top of `README.md` (each branc
 
 - [ ] **Step 2: Check the joined page**
 
-Run the backend suite (`python -m pytest -q`, expect `150 passed`), `npm ci && npm run build`, then render the merged app on ports 5001/5174 as in Task A6 step 6, at 1280 and 375. Expected: `Showing 328 of 328 articles` in the styled table, and the filter sidebar populated with the 4 source types, 7 stakeholders and the topics. Then drive the page in real time over the Chrome DevTools Protocol (Node 24's global `WebSocket`, Edge started with `--remote-debugging-port`): pick a stakeholder and confirm the count and the topic chart change; type `cheating`, press Enter, and screenshot the snippets and the Comments card.
+Run the backend suite (`python -m pytest -q`, expect `152 passed`), `npm ci && npm run build`, then render the merged app on ports 5001/5174 as in Task A6 step 6, at 1280 and 375. Expected: `Showing 328 of 328 articles` in the styled table, and the filter sidebar populated with the 4 source types, 7 stakeholders and the topics. Then drive the page in real time over the Chrome DevTools Protocol (Node 24's global `WebSocket`, Edge started with `--remote-debugging-port`): pick a stakeholder and confirm the count and the topic chart change; type `cheating`, press Enter, and screenshot the snippets and the Comments card.
 
 - [ ] **Step 3: Write the README's MVP section**
 
