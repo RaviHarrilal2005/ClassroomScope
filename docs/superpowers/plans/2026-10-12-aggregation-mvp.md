@@ -4,7 +4,7 @@
 
 **Goal:** `GET /api/v1/results` serves figures computed from the real analysis tables (sentiment, topic, classification) instead of the hardcoded stub, including the three breakdowns the demo reviewers asked for: sentiment over time, by topic, and by stakeholder.
 
-**Architecture:** One pure module (`compute.py`) turns table rows into the dashboard payload. A thin read layer (`db.py`, `results.py`) pages the four tables and recomputes on each request, the same way `orchestrator/topic_counts.py` already does for topics. The pipeline's aggregation stage runs the same computation once per run, so a broken table fails the stage loudly instead of only breaking the page. No new table, no migration, no snapshot.
+**Architecture:** One pure module (`compute.py`) turns table rows into the dashboard payload. `results.py` pages the four tables and recomputes on each request, the same way `orchestrator/topic_counts.py` already does for topics (its reader is replaced and deleted). The pipeline's aggregation stage runs the same computation once per run, so a broken table fails the stage loudly instead of only breaking the page. No new table, no migration, no snapshot.
 
 **Tech Stack:** Python 3.13, Flask 3.0, supabase-py (PostgREST), pytest, pyright, React 18 (Vite). No new dependencies.
 
@@ -34,9 +34,9 @@ Most likely to bite first. Each line's test is added to the task named.
 
 ## Design decisions this plan makes
 
-1. **Recompute on request, no snapshot table.** At 328 analysable articles this is four short paged reads. A snapshot needs a manual migration (the remote history cannot take `supabase db push`) and a `ResultsStore`; neither earns its place yet. Revisit when a request takes over about a second, or when a filter UI needs per-filter numbers.
+1. **Recompute on request, no snapshot table, no cache.** Measured against the real database: 1.6 s per request, which is eight sequential round trips of 0.1-0.2 s (four tables, each read until an empty page). The dashboard loads `/results` once on open, so that is acceptable for the MVP. A snapshot needs a manual migration (the remote history cannot take `supabase db push`) and a `ResultsStore`. Upgrade path, cheapest first: read the four tables on threads (about 0.4 s), then a 60 s in-process cache, then a snapshot row. Add one when the page feels slow or a filter UI needs per-filter numbers. The code carries a `ponytail:` comment saying so.
 2. **The corpus is "articles that have a sentiment result".** Not `llm_relevant` alone: 328 articles pass the relevance rule but 323 have results (duplicates are skipped by content hash). Counting the other 5 would deflate every share.
-3. **Aggregation reads the whole corpus, not `ctx.approved_ids`.** The dashboard shows the state of the corpus; a run that collected 40 articles must not replace a 323-article picture with a 40-article one. The stage reports both numbers.
+3. **Aggregation reads the whole corpus, not `ctx.approved_ids`.** The dashboard shows the state of the corpus; a run that collected 40 articles must not replace a 323-article picture with a 40-article one.
 4. **Preference order when an article has several rows.** Sentiment: `roberta_news` over `vader`. Stakeholder: any LLM classifier over `baseline_keyword`.
 5. **Months, not weeks.** Dates run 2022-11 to 2026-10; weekly buckets would be mostly empty.
 6. **`stance_results` is not read.** The table is empty and nothing on the dashboard uses it.
@@ -48,15 +48,15 @@ Most likely to bite first. Each line's test is added to the task named.
 **New**
 - `backend/agents/aggregation/__init__.py`: empty package marker.
 - `backend/agents/aggregation/compute.py`: pure functions, no database, no clock. Holds every counting rule so it can be tested without a fake client.
-- `backend/agents/aggregation/db.py`: `read_all` (paged read) and `read_corpus` (the four tables).
-- `backend/agents/aggregation/results.py`: `compute_results(client)` (raises) and `reader(client)` / `reader_from_env()` for the endpoint (never raises).
-- `backend/tests/test_aggregation_compute.py`, `backend/tests/test_aggregation_reads.py`.
+- `backend/agents/aggregation/results.py`: `read_all` (paged read), `read_corpus` (the four tables), `compute_results(client)` (raises) and `reader(client)` / `reader_from_env()` for the endpoint (never raises).
+- `backend/tests/test_aggregation.py`: all aggregation tests, one file.
 
 **Modified**
 - `backend/agents/adapters.py`: `AggregationAgent`.
 - `backend/orchestrator/registry.py`: register it where live.
 - `backend/app.py`: `read_results` replaces `read_topics` and the hardcoded payload.
-- `backend/tests/helpers.py`, `backend/tests/test_topic_counts.py`, `backend/tests/test_registry_wiring.py`: follow the rename and the new real stage.
+- `backend/orchestrator/topic_counts.py`: delete `read_topic_rows`, `reader`, `reader_from_env` (no callers once `/results` moves; `read_all` replaces the paging). Keep `top_topics` and `unavailable`.
+- `backend/tests/helpers.py`, `backend/tests/test_topic_counts.py`, `backend/tests/test_registry_wiring.py`: follow the rename, drop the deleted reader's tests, and the new real stage.
 - `frontend/src/components/DashboardShell.jsx`: drop the two "placeholder" notes that become false.
 - `README.md`, `NEXT_STEPS.md`, `docs/pipeline-coordinator.md`: stage is real now.
 
@@ -66,20 +66,20 @@ Most likely to bite first. Each line's test is added to the task named.
 
 **Files:**
 - Create: `backend/agents/aggregation/__init__.py`, `backend/agents/aggregation/compute.py`
-- Test: `backend/tests/test_aggregation_compute.py`
+- Test: `backend/tests/test_aggregation.py`
 
 **Interfaces:**
 - Consumes: `orchestrator.topic_counts.top_topics(rows) -> facet dict` (rows need `stable_topic_id`, `topic`).
 - Produces:
   - `pick_one(rows: list[dict], rank: Callable[[dict], Any]) -> dict[int, dict]`: the lowest-`rank` row per `article_id`.
-  - `build_results(articles, sentiment_rows, topic_rows, class_rows, max_articles=100) -> dict` with keys `analysed`, `sentiment_distribution`, `sentiment_counts`, `top_topics`, `sentiment_over_time`, `sentiment_by_topic`, `sentiment_by_stakeholder`, `articles`, `error`.
+  - `build_results(articles, sentiment_rows, topic_rows, class_rows, max_articles=100) -> dict` with keys `analysed`, `sentiment_distribution`, `top_topics`, `sentiment_over_time`, `sentiment_by_topic`, `sentiment_by_stakeholder`, `articles`, `error`.
   - `empty_results(reason: str) -> dict`: the same keys, all empty, `error` set.
   - Row shapes `articles`: `id, title, source, published_date, url`; `sentiment_rows`: `article_id, sentiment, method`; `topic_rows`: `article_id, stable_topic_id, topic`; `class_rows`: `article_id, classifier, stakeholder_category`.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-# backend/tests/test_aggregation_compute.py
+# backend/tests/test_aggregation.py
 """
 The aggregation rules. What goes quietly wrong here: an article counted
 twice because two methods labelled it, a missing topic raising instead of
@@ -114,7 +114,7 @@ def test_pick_one_keeps_the_best_ranked_row_per_article():
 
 def test_an_article_labelled_by_two_methods_counts_once():
     result = build_results([art(1)], [sent(1, "negative", "vader"), sent(1, "positive")], [], [])
-    assert result["sentiment_counts"] == {"positive": 1, "neutral": 0, "negative": 0}
+    assert result["sentiment_distribution"] == {"positive": 1, "neutral": 0, "negative": 0}
     assert result["analysed"] == 1
 
 
@@ -180,7 +180,7 @@ def test_empty_results_carries_the_reason():
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd backend && python -m pytest tests/test_aggregation_compute.py -q`
+Run: `cd backend && python -m pytest tests/test_aggregation.py -q`
 Expected: collection error, `ModuleNotFoundError: agents.aggregation`.
 
 - [ ] **Step 3: Implement**
@@ -245,7 +245,6 @@ def empty_results(reason: Optional[str] = None) -> Row:
     return {
         "analysed": 0,
         "sentiment_distribution": _zero_counts(),
-        "sentiment_counts": _zero_counts(),
         "top_topics": unavailable(reason or "No topic results yet."),
         "sentiment_over_time": [],
         "sentiment_by_topic": [],
@@ -298,7 +297,6 @@ def build_results(
     return {
         "analysed": total,
         "sentiment_distribution": distribution,
-        "sentiment_counts": counts,
         "top_topics": top_topics(topic_rows),
         "sentiment_over_time": _breakdown(dated, sort_by_label=True),
         "sentiment_by_topic": _breakdown(topical),
@@ -310,13 +308,13 @@ def build_results(
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cd backend && python -m pytest tests/test_aggregation_compute.py -q`
+Run: `cd backend && python -m pytest tests/test_aggregation.py -q`
 Expected: 10 passed.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/agents/aggregation backend/tests/test_aggregation_compute.py
+git add backend/agents/aggregation backend/tests/test_aggregation.py
 git commit -m "Count the dashboard figures from analysis rows"
 ```
 
@@ -325,8 +323,8 @@ git commit -m "Count the dashboard figures from analysis rows"
 ### Task 2: Reading the tables
 
 **Files:**
-- Create: `backend/agents/aggregation/db.py`
-- Test: `backend/tests/test_aggregation_reads.py`
+- Create: `backend/agents/aggregation/results.py`
+- Test: `backend/tests/test_aggregation.py` (append)
 
 **Interfaces:**
 - Consumes: a supabase client (`client.table(t).select(cols).eq(c, v).order("id").range(a, b).execute().data`).
@@ -337,11 +335,11 @@ git commit -m "Count the dashboard figures from analysis rows"
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-# backend/tests/test_aggregation_reads.py
-"""PostgREST returns at most 1000 rows a request; a reader that trusts one request drops the rest."""
+# append to backend/tests/test_aggregation.py (put the two imports with the others at the top)
+# PostgREST returns at most 1000 rows a request; a reader that trusts one request drops the rest.
 from types import SimpleNamespace
 
-from agents.aggregation.db import read_all, read_corpus
+from agents.aggregation.results import read_all, read_corpus
 
 
 class FakeClient:
@@ -407,20 +405,19 @@ def test_read_corpus_reads_only_analysable_articles():
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd backend && python -m pytest tests/test_aggregation_reads.py -q`
-Expected: `ModuleNotFoundError: agents.aggregation.db`.
+Run: `cd backend && python -m pytest tests/test_aggregation.py -q`
+Expected: `ImportError: cannot import name 'read_all'`.
 
 - [ ] **Step 3: Implement**
 
 ```python
-# backend/agents/aggregation/db.py
+# backend/agents/aggregation/results.py  (created here, extended in Task 3)
 """
-Reading the corpus and the analysis tables.
+The dashboard payload, computed from the analysis tables.
 
 PostgREST returns at most its max-rows per request whatever range is
 asked for, so every read pages until a page comes back empty rather than
-trusting a short page to be the last (the same rule as
-orchestrator/topic_counts.read_topic_rows).
+trusting a short page to be the last.
 """
 from __future__ import annotations
 
@@ -453,13 +450,13 @@ def read_corpus(client: Any) -> Tuple[List[Row], List[Row], List[Row], List[Row]
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cd backend && python -m pytest tests/test_aggregation_reads.py -q`
-Expected: 4 passed.
+Run: `cd backend && python -m pytest tests/test_aggregation.py -q`
+Expected: 14 passed (10 from Task 1, 4 new).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/agents/aggregation/db.py backend/tests/test_aggregation_reads.py
+git add backend/agents/aggregation/results.py backend/tests/test_aggregation.py
 git commit -m "Read the analysis tables in full, past the row cap"
 ```
 
@@ -468,9 +465,8 @@ git commit -m "Read the analysis tables in full, past the row cap"
 ### Task 3: Serve it from /results
 
 **Files:**
-- Create: `backend/agents/aggregation/results.py`
-- Modify: `backend/app.py` (`create_app`, `get_results`), `backend/tests/helpers.py:14-22`, `backend/tests/test_topic_counts.py:84`
-- Test: `backend/tests/test_aggregation_reads.py` (append), `backend/tests/test_routes.py` (check the existing `/results` tests still describe the payload)
+- Modify: `backend/agents/aggregation/results.py` (add to it), `backend/app.py` (`create_app`, `get_results`), `backend/orchestrator/topic_counts.py` (delete the reader), `backend/tests/helpers.py:14-22`, `backend/tests/test_topic_counts.py`
+- Test: `backend/tests/test_aggregation.py` (append), `backend/tests/test_routes.py`
 
 **Interfaces:**
 - Consumes: `read_corpus`, `build_results`, `empty_results`; `agents.supabase_client.get_client`, `is_configured`.
@@ -480,12 +476,10 @@ git commit -m "Read the analysis tables in full, past the row cap"
   - `reader_from_env() -> Callable[[], dict]`: `empty_results("Supabase is not configured...")` when it is not.
   - `create_app(runner=None, read_results=None)`; `build_client(registry=None, read_results=None)` in the test helper.
 
-- [ ] **Step 1: Write the failing tests** (append to `test_aggregation_reads.py`)
+- [ ] **Step 1: Write the failing tests** (append to `test_aggregation.py`)
 
 ```python
-from agents.aggregation.results import compute_results, reader
-
-
+# add compute_results and reader to the results import at the top
 def test_reader_turns_a_failed_read_into_an_empty_payload_with_the_reason(caplog):
     class Broken:
         def table(self, name):
@@ -508,7 +502,7 @@ def test_compute_results_raises_so_the_pipeline_stage_can_fail():
     raise AssertionError("expected the read error to propagate")
 ```
 
-Also in `tests/test_topic_counts.py:84` change `build_client(read_topics=lambda: facet)` to a `read_results` that returns a payload whose `top_topics` is `facet`, and add to `test_routes.py`:
+Add to `test_routes.py`:
 
 ```python
 def test_results_serves_the_reader_payload_unchanged():
@@ -527,31 +521,18 @@ Expected: failures on the new tests (`results` module missing, `read_results` no
 - [ ] **Step 3: Implement**
 
 ```python
-# backend/agents/aggregation/results.py
-"""
-The dashboard payload, computed from the analysis tables.
-
-compute_results raises on a read error: the pipeline stage uses it, and
-a stage that cannot read its tables must fail, not report success.
-reader() is for the endpoint, where a failed read should leave the rest
-of the dashboard loading, so it returns an empty payload that says why.
-"""
-from __future__ import annotations
-
-import logging
-from typing import Any, Callable, Dict
-
-from .compute import build_results, empty_results
-from .db import read_corpus
-
-logger = logging.getLogger(__name__)
-
+# add to backend/agents/aggregation/results.py
+# imports at the top: `import logging`, `from typing import Callable`,
+# `from .compute import build_results, empty_results`, and `logger = logging.getLogger(__name__)`
 
 def compute_results(client: Any) -> Dict[str, Any]:
+    """Raises on a read error: the pipeline stage uses this, and a stage that cannot read its tables must fail."""
+    # ponytail: recomputed per request (about 1.6 s, eight round trips). Threads, then a 60 s cache, then a snapshot row.
     return build_results(*read_corpus(client))
 
 
 def reader(client: Any) -> Callable[[], Dict[str, Any]]:
+    """For the endpoint: a failed read leaves the rest of the dashboard loading, with the reason."""
     def read() -> Dict[str, Any]:
         try:
             return compute_results(client)
@@ -586,12 +567,12 @@ def create_app(runner=None, read_results=None):
         return jsonify(read_results())
 ```
 
-Update the module docstring and the `get_results` TODO list accordingly (filters and auth stay as TODOs). In `tests/helpers.py` rename the `read_topics` parameter to `read_results`.
+Update the module docstring and the `get_results` TODO list accordingly (filters and auth stay as TODOs). In `tests/helpers.py` rename the `read_topics` parameter to `read_results`. In `orchestrator/topic_counts.py` delete `read_topic_rows`, `reader`, `reader_from_env` and the imports only they used; in `tests/test_topic_counts.py` delete the tests for those three (the `FakeClient` and the `/results` route test go with them; `top_topics` tests stay).
 
 - [ ] **Step 4: Run to verify they pass**
 
 Run: `cd backend && python -m pytest tests -q && cd .. && python -m pyright backend/`
-Expected: all pass, pyright 0 errors.
+Expected: all pass, pyright 0 errors (the suite is the prior total, minus the deleted reader tests, plus the new ones).
 
 - [ ] **Step 5: Check it against the real database**
 
@@ -601,10 +582,10 @@ cd backend && source venv/bin/activate && python - <<'EOF'
 from agents.aggregation.results import compute_results
 from agents.supabase_client import get_client
 r = compute_results(get_client())
-print(r["analysed"], r["sentiment_counts"], len(r["sentiment_over_time"]), len(r["sentiment_by_topic"]), r["sentiment_by_stakeholder"][:2])
+print(r["analysed"], r["sentiment_distribution"], len(r["sentiment_over_time"]), len(r["sentiment_by_topic"]), r["sentiment_by_stakeholder"][:2])
 EOF
 ```
-Expected: `analysed` equal to the `sentiment_results` row count (323 today), counts summing to it, stakeholder labels from the table.
+Expected: `analysed` equal to the `sentiment_results` row count (323 today), 31 months, 5 topics, stakeholders led by `students` 131 and `educators` 115, taking about 1.6 s.
 
 - [ ] **Step 6: Commit**
 
@@ -622,18 +603,18 @@ git add -A backend && git commit -m "Serve /results from the analysis tables"
 
 **Interfaces:**
 - Consumes: `compute_results(client)`, `RunContext.approved_ids`.
-- Produces: `AggregationAgent(Agent)` with `name = "aggregation"` and `run(ctx) -> {"aggregated": int, "articles_in_run": int}`.
+- Produces: `AggregationAgent(Agent)` with `name = "aggregation"` and `run(ctx) -> {"aggregated": int}`.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```python
 # append to backend/tests/test_agent_adapters.py
-def test_aggregation_reports_the_corpus_and_the_run_separately(monkeypatch):
+def test_aggregation_reports_the_corpus_size(monkeypatch):
     from agents.adapters import AggregationAgent
     monkeypatch.setattr("agents.adapters.get_client", lambda: object())
     monkeypatch.setattr("agents.aggregation.results.compute_results", lambda client: {"analysed": 323})
     ctx = RunContext(run_id=1, article_ids=[1, 2], approved_ids=[1, 2])
-    assert AggregationAgent().run(ctx) == {"aggregated": 323, "articles_in_run": 2}
+    assert AggregationAgent().run(ctx) == {"aggregated": 323}
 
 
 def test_aggregation_raises_when_the_tables_cannot_be_read(monkeypatch):
@@ -670,10 +651,10 @@ class AggregationAgent(Agent):
         from .aggregation import results
 
         payload = results.compute_results(get_client())
-        return {"aggregated": payload["analysed"], "articles_in_run": len(ctx.approved_ids)}
+        return {"aggregated": payload["analysed"]}
 ```
 
-In `registry.py`, in the `if live:` block import `AggregationAgent` and `registry.register(AGGREGATION, AggregationAgent())`; in the stub branch keep `agents.stub_aggregation()`. Remove the `registry.register(AGGREGATION, agents.stub_aggregation())` line below the if/else and register it in both branches. Update the `adapters.py` docstring row to `aggregation   real - AggregationAgent`.
+In `registry.py`, import `AggregationAgent` in the `if live:` block's import line, and change the existing registration to `registry.register(AGGREGATION, AggregationAgent() if live else agents.stub_aggregation())`. Update the `adapters.py` docstring row to `aggregation   real - AggregationAgent`.
 
 - [ ] **Step 4: Run** `cd backend && python -m pytest tests -q && cd .. && python -m pyright backend/`. Expected: all pass.
 
