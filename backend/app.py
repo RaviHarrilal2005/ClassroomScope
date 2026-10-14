@@ -4,9 +4,9 @@ ClassroomScope API Gateway (SS-4) — entry point.
 STATUS:
   * /api/v1/runs  — pipeline coordinator endpoints (sequencing built,
                     agents are stubs until each owner's agent is ready)
-  * /api/v1/results — the analysable articles and their topic counts,
-                      filtered per request (orchestrator/corpus.py);
-                      sentiment is still a hardcoded placeholder
+  * /api/v1/results — the analysable articles, their topic counts and
+                      sentiment figures, filtered per request
+                      (orchestrator/corpus.py, agents/aggregation/)
   * /api/v1/search/comments — keyword search over article comments
   * The run store is Supabase when SUPABASE_URL / SUPABASE_KEY are set,
     in-memory otherwise — see build_run_store() below.
@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+from agents.aggregation.compute import NO_SENTIMENT, sentiment_figures
 from orchestrator import (
     BackgroundRunner,
     InMemoryRunStore,
@@ -32,10 +33,6 @@ from orchestrator.routes import create_runs_blueprint
 from orchestrator.supabase_store import SupabaseRunStore
 
 logger = logging.getLogger(__name__)
-
-# Shaped like what the aggregation agent will produce, but invented: no
-# stage aggregates sentiment_results into /results yet.
-PLACEHOLDER_SENTIMENT = {"positive": 0.55, "neutral": 0.23, "negative": 0.22}
 
 # Reads backend/.env whatever the working directory. Real environment
 # variables win, so deployments can set them without a file.
@@ -105,17 +102,27 @@ def create_app(runner=None, read_corpus=None, search_comments=None):
         The dashboard's data, narrowed by the filter query params: from,
         to, source_type, stakeholder, topic, q (see orchestrator/corpus.py).
 
-        Articles and top topics are real. sentiment_distribution is still
-        a placeholder until the sentiment agent is wired in.
+        Everything is computed from the analysis tables: topics and the
+        article list by the corpus, the sentiment figures over the same
+        filtered articles.
 
         TODO: add auth check once Session/Auth Context (SS-5) is wired in
         """
         filters, error = filters_or_400()
         if error:
             return error
+        assert filters is not None  # filters_or_400 returns one or the other
+        current = read_corpus()
+        if not current["available"]:
+            reason = current["reason"]
+        elif any(filters.values()):
+            reason = "No analysed articles match these filters."
+        else:
+            reason = NO_SENTIMENT
+        matched = corpus.filter_articles(current["articles"], filters)
         return jsonify({
-            "sentiment_distribution": PLACEHOLDER_SENTIMENT,
-            **corpus.results_payload(read_corpus(), filters),
+            **corpus.results_payload(current, filters),
+            **sentiment_figures(matched, reason),
         })
 
     @app.get("/api/v1/search/comments")

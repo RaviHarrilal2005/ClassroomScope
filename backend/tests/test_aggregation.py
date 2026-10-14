@@ -4,10 +4,13 @@ sentiment deflating every share, a missing topic raising instead of being
 skipped, an unknown label crashing the count, an empty corpus dividing by
 zero.
 """
+from typing import Optional
+
 from agents.aggregation.compute import NO_SENTIMENT, sentiment_figures
 
 
-def art(id, sentiment="neutral", month="2025-03", topic=None, stakeholder="educators"):
+def art(id, sentiment: Optional[str] = "neutral", month: Optional[str] = "2025-03", topic=None,
+        stakeholder: Optional[str] = "educators"):
     return {"id": id, "published_date": f"{month}-10T10:00:00+00:00" if month else None,
             "topic": topic, "stakeholder": stakeholder, "sentiment": sentiment}
 
