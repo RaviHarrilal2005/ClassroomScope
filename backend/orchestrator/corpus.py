@@ -1,10 +1,10 @@
 """
 The analysable corpus for the dashboard: each article with one source
-type, stakeholder and topic, filtered and searched per request.
+type, stakeholder, topic and sentiment, filtered and searched per request.
 
 MVP (README, "MVP features — come back to these"): each corpus refresh
-reads three tables (articles, classification_results, topic_results) and
-filters in Python, behind a 60-second cache; a search also reads
+reads four tables (articles, classification_results, topic_results,
+sentiment_results) and filters in Python, behind a 60-second cache; a search also reads
 `comments`. Fine at a few
 hundred articles. The aggregation snapshot, or a Postgres view, should
 replace it once the corpus grows or the numbers must match a run.
@@ -14,6 +14,8 @@ Merge rules, one value per article:
     the newest `classified_at`.
   * topic: the newest topic_results row. No row, or no stable topic ID,
     means unassigned.
+  * sentiment: `roberta_news` beats any other method; ties go to the
+    newest row. No row means no sentiment (None).
 """
 from __future__ import annotations
 
@@ -39,6 +41,7 @@ EXACT_FILTERS = {"source_type": "source_type", "stakeholder": "stakeholder", "to
 ARTICLE_FIELDS = ("id", "title", "url", "source", "published_date", "source_type",
                   "stakeholder", "stable_topic_id", "topic", "snippet")
 BASELINE_CLASSIFIER = "baseline_keyword"
+PREFERRED_SENTIMENT_METHOD = "roberta_news"
 SNIPPET_CONTEXT = 80
 CACHE_SECONDS = 60
 COMMENT_LIMIT = 50
@@ -67,6 +70,10 @@ def _classifier_rank(row: Mapping[str, Any]) -> Tuple[bool, str]:
     return (row.get("classifier") != BASELINE_CLASSIFIER, row.get("classified_at") or "")
 
 
+def _method_rank(row: Mapping[str, Any]) -> int:
+    return 1 if row.get("method") == PREFERRED_SENTIMENT_METHOD else 0
+
+
 def read_corpus(client: Any) -> List[Article]:
     """The analysable articles, each with source_type, stakeholder, stable_topic_id and topic."""
     articles = page_all(lambda: client.table("articles")
@@ -77,6 +84,8 @@ def read_corpus(client: Any) -> List[Article]:
                                .order("id"))
     topic_rows = page_all(lambda: client.table("topic_results")
                           .select("article_id, stable_topic_id, topic").order("id"))
+    sentiment_rows = page_all(lambda: client.table("sentiment_results")
+                              .select("id, article_id, sentiment, method").order("id"))
 
     best: Dict[Any, Mapping[str, Any]] = {}
     for row in classifications:
@@ -84,6 +93,12 @@ def read_corpus(client: Any) -> List[Article]:
         if current is None or _classifier_rank(row) > _classifier_rank(current):
             best[row["article_id"]] = row
     newest_topic = {row["article_id"]: row for row in topic_rows}  # ordered by id, so the last wins
+    # Ordered by id, so a later row of the same preference replaces an earlier one.
+    sentiment: Dict[Any, Mapping[str, Any]] = {}
+    for row in sentiment_rows:
+        current = sentiment.get(row["article_id"])
+        if current is None or _method_rank(row) >= _method_rank(current):
+            sentiment[row["article_id"]] = row
 
     corpus = []
     for article in articles:
@@ -97,6 +112,7 @@ def read_corpus(client: Any) -> List[Article]:
             "stakeholder": label.get("stakeholder_category"),
             "stable_topic_id": topic_id,
             "topic": (topic.get("topic") or topic_id) if topic_id else None,
+            "sentiment": sentiment.get(article["id"], {}).get("sentiment"),
         })
     return corpus
 
