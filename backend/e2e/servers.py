@@ -68,7 +68,7 @@ def build_frontend(out_dir: Path, api_base_url: str, frontend_dir: Path = FRONTE
     vite = frontend_dir / "node_modules" / "vite" / "bin" / "vite.js"
     if not vite.is_file():
         raise FrontendBuildError(f"Vite is not installed in {frontend_dir}: run `npm install` there first.")
-    env = {**os.environ, "VITE_API_BASE_URL": api_base_url}
+    env = {**os.environ, "VITE_API_URL": api_base_url}
     try:
         result = subprocess.run(
             [node, str(vite), "build", "--outDir", str(out_dir), "--emptyOutDir"],

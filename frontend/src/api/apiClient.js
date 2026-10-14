@@ -15,9 +15,8 @@
  *   - Auth token attachment, retries, and export calls are NOT built yet.
  */
 
-// Set at build time by VITE_API_BASE_URL (the end-to-end tests point it
-// at their own backend); the local dev server otherwise.
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5000/api/v1";
+// VITE_API_URL lets two dev servers run side by side on other ports.
+const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api/v1";
 
 /** Thrown for a non-2xx response, carrying the status and the parsed body. */
 export class ApiError extends Error {
