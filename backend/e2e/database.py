@@ -7,6 +7,7 @@ that can return more than PostgREST's 1,000-row page reads in pages.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from typing import Any, Callable, Dict, List, Set, Tuple
 
 from e2e.settings import TOPIC_CATALOG
@@ -82,16 +83,20 @@ def articles_with_rows(client: Any, table: str, ids: Set[int]) -> Set[int]:
 
 
 def topic_facet(client: Any) -> Dict[str, Any]:
-    """The /results topic facet as Supabase's own exact counts give it."""
+    """
+    The /results topic facet, worked out from the raw tables.
+
+    Follows the corpus's documented rule (orchestrator/corpus.py): one topic
+    per analysable article, the newest topic_results row; no row, or no
+    stable topic ID, means unassigned.
+    """
     topics = json.loads(TOPIC_CATALOG.read_text())["topics"]
-
-    def exact(query: Any) -> int:
-        return query.limit(1).execute().count or 0
-
-    counts = {topic_id: exact(client.table("topic_results").select("id", count="exact")
-                              .eq("stable_topic_id", topic_id))
-              for topic_id in topics}
-    items = sorted(({"label": topics[t]["label"], "count": n} for t, n in counts.items() if n),
+    corpus = {row["id"] for row in page_all(lambda: client.table("articles").select("id")
+                                            .eq("llm_relevant", True).eq("processing_status", "success").order("id"))}
+    newest = {row["article_id"]: row["stable_topic_id"] for row in page_all(
+        lambda: client.table("topic_results").select("article_id, stable_topic_id").order("id"))}
+    counts = Counter(newest[a] for a in corpus if newest.get(a))
+    items = sorted(({"label": topics[topic_id]["label"], "count": n} for topic_id, n in counts.items()),
                    key=lambda item: (-item["count"], item["label"]))
-    unassigned = exact(client.table("topic_results").select("id", count="exact").is_("stable_topic_id", "null"))
-    return {"counted": sum(counts.values()), "unassigned": unassigned, "items": items}
+    counted = sum(counts.values())
+    return {"counted": counted, "unassigned": len(corpus) - counted, "items": items}

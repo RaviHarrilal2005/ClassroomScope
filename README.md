@@ -160,7 +160,7 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | Pipeline runs | All 20 recent runs listed; Start a run has no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
 | Frontend | No frontend tests | Regressions caught by eye | Vitest + Testing Library |
 | End-to-end checks (`backend/e2e`) | Run against the team's shared Supabase project: 5 stored articles per run, real collection only with `--collect` | Every run writes to team data: run history, re-written classifications, sometimes new articles | A separate test database, selected with `E2E_ENV_FILE=.env.test` |
-| End-to-end checks (`backend/e2e`) | Dashboard checks find elements by their visible text and layout | A redesign that changes that text breaks D1–D3, and the October redesign did: D1 fails today, D2 and D3 are untested against it | `data-testid` attributes on the elements the tests use |
+| End-to-end checks (`backend/e2e`) | Dashboard checks find elements by their visible text and layout | A redesign that changes that text breaks D1–D3. The October redesign did, and they were rewritten for it | `data-testid` attributes on the elements the tests use |
 
 ## Next steps (planned)
 

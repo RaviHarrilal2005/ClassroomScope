@@ -69,9 +69,9 @@ offline tests, which never touch the network.
 | P3 | A second start while one is running | Refused with 409, naming the active run | Pass | |
 | P4 | The run list | The new run first; nothing active once it has finished | Pass | |
 | P5 | The database itself, read directly | The run and its 7 stage rows final; classification rows written during the run for exactly 5 analysable articles; a topic row for each | Pass | articles 36, 45, 47, 49, 51 |
-| R1 | `/api/v1/results` topic counts | Equal to Supabase's exact count per topic ID, and the unassigned count | Pass | 135 articles with a topic, 188 unassigned |
-| D1 | The dashboard in Chromium | No console errors; both charts drawn; topic bars match R1 in order; no label cut off; the placeholder notes still shown | Pass | screenshot below |
-| D2 | The admin console | P's run listed as completed | Pass | |
+| R1 | `/api/v1/results` topic counts | Equal to the counts worked out from the raw tables: one topic per analysable article, the newest row, none means unassigned | Pass | 135 articles with a topic, 188 unassigned (first run) |
+| D1 | The dashboard in Chromium | No console errors; both charts drawn; the topic line, bars and article table match the database; no label cut off; the sentiment placeholder note shown | Pass | screenshot below |
+| D2 | The Pipeline runs tab | P's run listed, its badge reading exactly `completed` | Pass | |
 | D3 | "Start a run" on the dashboard | The button disables; stages move from running to succeeded; the run ends `completed` | Pass | run #29 |
 | C1 | A real RSS + GNews collection run | Completes, whether or not there was new on-topic news | Pass | run #30 found nothing new |
 | C2 | Every article C1 reports | Stored as relevant, fully downloaded, and classified | Pass | nothing to check this time |
@@ -103,7 +103,7 @@ did the same with 9 articles.
 how many were relevant, for example "9 new articles, none relevant"
 (item 4 in `NEXT_STEPS.md`).
 
-### 2. The dashboard's article note gives a stale count (low)
+### 2. The dashboard's article note gives a stale count (low; gone since the redesign)
 
 **What happens:** the Articles section reads "The pipeline has 814 real
 articles". The database holds 2,282, of which 328 are analysable.
@@ -111,7 +111,8 @@ articles". The database holds 2,282, of which 328 are analysable.
 **Evidence:** the D1 screenshot below.
 
 **Suggested fix:** the dashboard MVP replaces this placeholder table with
-real articles. Until then, the sentence should drop the number.
+real articles. It has: the redesign shows the real article list (see the
+rerun below).
 
 ### 3. In the test suite, now fixed: P5 read the database too late
 
@@ -137,6 +138,30 @@ fix.
   inside supabase-py 2.31, and ResourceWarnings for Supabase connections
   the app never closes. They're harmless today and would go away with a
   supabase-py upgrade and closing clients on shutdown.
+
+## Rerun after the dashboard redesign (2026-10-13)
+
+The dashboard MVP (filters, keyword search, redesign) merged after this
+report's first run, and D1 failed against it: the topic line, the axis
+labels and the Pipeline runs console had all changed. D1–D3 and R1 were
+rewritten for it, then run again: **R1, D1, D2 and D3 pass** (branch
+`fix-e2e-dashboard-selectors`, runs #49 and #50, both `completed`, 7
+stages succeeded).
+
+Two things changed in what the checks assert:
+
+- **R1 and D1 now count per article, not per row.** The corpus gives each
+  analysable article one topic (its newest row) and counts articles
+  with none as unassigned. Counting rows disagreed with the API by 5, the
+  articles with no topic row yet. The API was right; the expectation was
+  rewritten from the raw tables.
+- **D1 also checks the article table:** "Showing N of N articles" and one
+  row per article, matching the database. That run showed 159 of 333
+  articles with a topic and 174 without.
+
+D2 and D3 now also fail at once on a run that ends `completed with
+errors` or `failed`, instead of waiting five minutes, and D3 waits for the
+console to load before clicking.
 
 ## Database footprint
 
@@ -170,11 +195,10 @@ day it may store some.
    checks run before any run has written a topic row.
 2. **Make the run note tell "nothing fetched" apart from "fetched, none
    relevant"** (problem 1).
-3. **Rerun this suite when the dashboard MVP merges,** and update D1–D3 in
-   the same PR. They find elements by their visible text, which the
-   redesign changes. `data-testid` attributes on those elements would
-   make them survive later redesigns (see the README's "MVP features"
-   table).
+3. **Done for the October redesign** (see the rerun below). D1–D3 find
+   elements by their visible text, so the next redesign breaks them
+   again; `data-testid` attributes on those elements would make them
+   survive (see the README's "MVP features" table).
 4. **Run `python -m pytest e2e` before merging any PR that touches the
    pipeline or the dashboard.** It takes about 2 minutes.
 5. **Topic owner:** look at the 58% unassigned rate, perhaps starting from
