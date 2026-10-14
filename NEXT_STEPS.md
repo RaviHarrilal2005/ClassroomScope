@@ -113,16 +113,3 @@ Smaller things we found while testing:
   features — come back to these"). When the aggregation agent lands, its
   snapshot can't be filtered as planned, so `/results` has to keep
   filtering per request or the snapshot has to change shape.
-
-### Merging dashboard-mvp and e2e-testing
-
-Both branches can't be on main unchanged. Whoever merges second updates
-the e2e tests (`backend/e2e/`):
-
-- `/results` now counts topics as the newest `topic_results` row per
-  analysable article, so R1 in `test_2_results_api.py`, which is built
-  on `database.topic_facet()`, must be rewritten against those rules.
-- D1 in `test_3_dashboard.py` expects the removed texts "From the topic
-  agent:" and "Two hardcoded rows."
-- D2 and D3 expect the AdminConsole on page load. It is now behind the
-  "Pipeline runs" tab.
