@@ -1,5 +1,6 @@
 """D1-D3: the dashboard in Chromium, against the real backend."""
 import re
+from decimal import ROUND_HALF_UP, Decimal
 
 from playwright.sync_api import expect
 
@@ -13,11 +14,16 @@ def squash(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
+def percent(share: float) -> int:
+    """A share as the donut labels it: JavaScript's toFixed(0), which rounds halves up."""
+    return int(Decimal(share * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+
+
 def open_pipeline_runs(page):
     page.get_by_role("navigation", name="Views").get_by_role("button", name="Pipeline runs").click()
 
 
-def test_d1_dashboard_shows_real_topics_and_marks_placeholders(
+def test_d1_dashboard_shows_real_topics_and_sentiment(
         page, frontend, environment, results_dir, record_property):
     problems = watch_console(page)
     page.goto(frontend.url, timeout=PAGE_TIMEOUT)
@@ -35,7 +41,12 @@ def test_d1_dashboard_shows_real_topics_and_marks_placeholders(
     assert (page.locator(".recharts-label-list text").all_text_contents()
             == [str(item["count"]) for item in expected["items"]])
     assert page.evaluate(CLIPPED_LABELS) == []
-    expect(page.get_by_text("Placeholder figures, hardcoded")).to_be_visible()
+    sentiment = database.sentiment_facet(environment.client)
+    expect(page.get_by_text("Placeholder figures")).to_have_count(0)
+    expect(page.get_by_text(f"Share of the {sentiment['analysed']} matching article(s) "
+                            "with a sentiment result.")).to_be_visible()
+    for name, share in sentiment["shares"].items():
+        expect(page.get_by_text(f"{name.capitalize()} {percent(share)}%", exact=True)).to_be_visible()
     expect(page.get_by_text(f"Showing {total} of {total} articles")).to_be_visible()
     expect(page.locator("table.data-table tbody tr")).to_have_count(total)
     screenshot(page, results_dir, "D1-dashboard.png", record_property)

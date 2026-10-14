@@ -2,9 +2,9 @@
 from datetime import datetime
 
 from e2e.results import describe_run
+from orchestrator.agents import StubAgent
 from orchestrator.stages import PIPELINE_ORDER
 
-STUBS = ("sentiment", "stance", "aggregation")
 ALL_SUCCEEDED = [(name, "succeeded") for name in PIPELINE_ORDER]
 
 
@@ -21,15 +21,16 @@ def test_p1_starting_a_run_returns_at_once(api_run, record_property):
     assert set(stages.values()) == {"pending"}
 
 
-def test_p2_the_run_completes_with_every_stage_succeeding(api_run, record_property):
+def test_p2_the_run_completes_with_every_stage_succeeding(api_run, environment, record_property):
     run = api_run.final
     assert run is not None and run["status"] == "completed", describe_run(run)
     assert [(s["stage_name"], s["status"]) for s in run["stages"]] == ALL_SUCCEEDED, describe_run(run)
     assert run["articles_collected"] == 5
     assert run["notes"] == "Collected 5 article(s); 5 passed security screening."
     took = datetime.fromisoformat(run["finished_at"]) - datetime.fromisoformat(run["started_at"])
+    stubs = [s for s in PIPELINE_ORDER if isinstance(environment.registry.get(s), StubAgent)]
     record_property("note", f"run #{run['id']} took {took.total_seconds():.0f}s; "
-                            f"stub stages: {', '.join(STUBS)}")
+                            f"stub stages: {', '.join(stubs) or 'none'}")
 
 
 def test_p3_a_second_run_is_refused_while_one_is_active(api_run):

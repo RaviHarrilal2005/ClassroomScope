@@ -1,8 +1,7 @@
 # What's left to do
 
-The pipeline runs from start to finish, but three of its seven stages
-are still placeholders, and the dashboard's sentiment chart still shows
-made-up numbers.
+The pipeline runs from start to finish. Stance is still a placeholder,
+and so is sentiment on any computer without its libraries.
 This page lists what has to change and how to tell when each part is
 done.
 
@@ -61,7 +60,7 @@ Two words you'll see on the dashboard:
 | Topic | real (needs Git LFS, see above) | Esmeralda |
 | Sentiment | real (needs `transformers` + `vaderSentiment`, see requirements.txt) | Deena |
 | Stance | stub: no code yet | TBD |
-| Aggregation | stub: planned, starts after sentiment | Ravi |
+| Aggregation | real: the dashboard's sentiment figures | Ravi |
 
 ## 1. Sentiment: done, check it on a real run (Deena)
 
@@ -81,17 +80,19 @@ There's no stance code yet, and nothing on the dashboard uses stance
 results. Whoever picks it up can follow the same steps as sentiment.
 Results go in the `stance_results` table.
 
-## 3. Aggregation (Ravi, after sentiment)
+## 3. Aggregation: done, check it on a real run (Ravi)
 
-Aggregation turns the analysis tables into the numbers the dashboard
-shows. The topic chart is already real: `/api/v1/results` counts
-`topic_results` directly. Sentiment and the article list are still
-sample data, which is why they have a yellow "Placeholder figures"
-note. The plan is
-already written in
-[docs/superpowers/plans/2026-09-29-aggregation-agent.md](docs/superpowers/plans/2026-09-29-aggregation-agent.md).
-Work starts once sentiment is connected, so there are real sentiment
-results to count.
+`/api/v1/results` now serves real sentiment figures for the filtered
+articles: the share (the donut), and the same broken down by month,
+topic and stakeholder (`agents/aggregation/compute.py`). The aggregation
+stage computes them on every run, so a broken table fails the stage.
+Nothing draws the three breakdowns yet; that, a sentiment column in the
+article table and a snapshot per run are listed at the end of
+[the plan](docs/superpowers/plans/2026-10-12-aggregation-mvp.md).
+
+To check it: a run shows aggregation `succeeded`, and
+`python -m pytest e2e -k "r1 or d1"` compares the API and the donut with
+`sentiment_results`.
 
 ## 4. Dashboard fixes (Ravi)
 
@@ -110,6 +111,6 @@ Smaller things we found while testing:
   stages needs the terminal. A "run on stored articles" button would
   fix that.
 - The filter panel and keyword search exist as MVPs (README, "MVP
-  features — come back to these"). When the aggregation agent lands, its
-  snapshot can't be filtered as planned, so `/results` has to keep
-  filtering per request or the snapshot has to change shape.
+  features — come back to these"). The sentiment figures follow the
+  filters because they are computed per request; a snapshot table, if
+  one is added, has to keep that.

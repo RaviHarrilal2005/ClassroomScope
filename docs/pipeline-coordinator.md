@@ -2,8 +2,9 @@
 
 **Status: running end to end, verified against the live database.**
 The sequencing and failure handling are built and tested (98 tests).
-Collection, security, classification and topic are the team's real
-agents; stance and aggregation are still stubs — see
+Collection, security, classification, topic and aggregation are real
+(sentiment too, where its libraries are installed); stance is still a
+stub — see
 [Which agents are real](#which-agents-are-real). The topic stage and
 collection's LLM relevance check were wired in after the verified run
 below, and have not had a live run yet.
@@ -98,7 +99,7 @@ package without touching sequencing code.
 | Sentiment | real (stub where transformers/vaderSentiment are missing) | `agents/sentiment/sentiment_agent.py`, RoBERTa with VADER as the fallback |
 | Stance | stub | no implementation on any branch yet |
 | Topic | **real** where its model is | `agents/topic/` — topics from a saved BERTopic model, stored in the repo with Git LFS; a stub on machines without it — see below |
-| Aggregation | stub | not written yet |
+| Aggregation | **real** | `agents/aggregation/` — sentiment figures over the corpus; `/results` recomputes them per request and the stage stores nothing |
 
 `build_default_registry(live=...)` chooses. `live=None` (the default)
 decides from the environment: real agents when Supabase is configured,
@@ -471,8 +472,8 @@ fails if the deployed schema and the code drift apart.
 
 ## Known limitations and next steps
 
-- **Three stages are still stubs.** Sentiment has a standalone script
-  that is not wired in; stance and aggregation have no implementation.
+- **Stance is still a stub**, and sentiment is one wherever
+  `transformers` or `vaderSentiment` is not installed.
   See [Which agents are real](#which-agents-are-real).
 - **The topic stage only runs where its model file has been restored.**
   Everywhere else it is a stub, so `topic_results` only grows from runs

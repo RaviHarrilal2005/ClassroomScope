@@ -6,8 +6,8 @@
  *
  * STATUS:
  *   - filters: held here; results and comment search reload whenever
- *     they change. /results serves real articles and topic counts;
- *     its sentiment is still a placeholder.
+ *     they change. /results serves real articles, topic counts and
+ *     sentiment figures.
  *   - run status + the run-status poller: real, reading pipeline_runs.
  */
 import {
