@@ -79,11 +79,13 @@ def main(argv=None):
         seed.run("scheduled")
 
     from app import create_app
-    from orchestrator.topic_counts import unavailable
+    from orchestrator import corpus
 
+    no_data = "The dev server doesn't read the database, so there are no articles. Use python app.py for real data."
     app = create_app(
         runner=BackgroundRunner(coordinator),
-        read_topics=lambda: unavailable("The dev server doesn't read the database, so there are no topic counts."),
+        read_corpus=lambda: corpus.unavailable(no_data),
+        search_comments=lambda articles, q: corpus.comments_unavailable(no_data),
     )
     print(f"\n  Dev backend (stub agents, in-memory) on http://localhost:{args.port}")
     print(f"  {delay}s per stage{' — failing: ' + ', '.join(args.fail) if args.fail else ''}")

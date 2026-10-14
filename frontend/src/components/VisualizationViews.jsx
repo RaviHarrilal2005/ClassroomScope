@@ -32,7 +32,7 @@ export function SentimentDonut({ distribution }) {
   }));
 
   return (
-    <div style={{ maxWidth: "480px" }}>
+    <div className="chart chart-donut">
       <ResponsiveContainer width="100%" height={260}>
         <PieChart accessibilityLayer={false}>
           <Pie
@@ -53,15 +53,35 @@ export function SentimentDonut({ distribution }) {
   );
 }
 
+/** Axis label wrapped onto up to two lines (a row is 44px tall). */
+function WrappedTick({ x, y, payload }) {
+  const lines = [""];
+  for (const word of String(payload.value).split(" ")) {
+    const last = lines.length - 1;
+    if (lines[last] && lines[last].length + word.length >= 28 && last < 1) lines.push(word);
+    else lines[last] = lines[last] ? `${lines[last]} ${word}` : word;
+  }
+  return (
+    <text x={x - 6} y={y} textAnchor="end" className="recharts-text" style={{ fill: "var(--muted)" }}>
+      {lines.map((line, i) => (
+        <tspan key={i} x={x - 6} dy={i === 0 ? (lines.length > 1 ? "-0.2em" : "0.35em") : "1.15em"}>
+          {line}
+        </tspan>
+      ))}
+    </text>
+  );
+}
+
 /** [{ label, count }] as horizontal bars, in the order given. */
 export function TopTopicsBar({ topics }) {
   return (
-    <div style={{ maxWidth: "760px" }}>
+    <div className="chart">
       <ResponsiveContainer width="100%" height={topics.length * 44 + 10}>
         <BarChart data={topics} layout="vertical" margin={{ right: 40 }} accessibilityLayer={false}>
           <XAxis type="number" hide />
-          {/* Sized to the longest label: real topic names run to ~50 characters. */}
-          <YAxis type="category" dataKey="label" width="auto" />
+          {/* Real topic names run to ~50 characters: a fixed width, wrapped, so a
+              phone-width card keeps room for the bars. */}
+          <YAxis type="category" dataKey="label" width={190} tick={WrappedTick} />
           <Bar dataKey="count" fill={BLUE.fg}>
             <LabelList dataKey="count" position="right" />
           </Bar>

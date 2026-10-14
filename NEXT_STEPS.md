@@ -1,7 +1,8 @@
 # What's left to do
 
 The pipeline runs from start to finish, but three of its seven stages
-are still placeholders, and the dashboard still shows made-up numbers.
+are still placeholders, and the dashboard's sentiment chart still shows
+made-up numbers.
 This page lists what has to change and how to tell when each part is
 done.
 
@@ -32,8 +33,11 @@ How you start the backend decides which agents you get:
 | `python run_dev_server.py` | yes | all stubs | no |
 | `python run_pipeline.py --live --backlog --limit 5` | no, it prints to the terminal | the real ones, on 5 articles we already have | yes |
 
-If you're only working on the dashboard, use `run_dev_server.py`. Runs
-finish in seconds and nothing touches the shared database.
+If you're only working on the dashboard's run console, use
+`run_dev_server.py`. Runs finish in seconds and nothing touches the
+shared database. It reads no database, so the dashboard shows no
+articles; use `python app.py` to see real articles and topics. Its GET
+endpoints only read, but don't click "Start a run" there.
 
 Two words you'll see on the dashboard:
 
@@ -105,6 +109,20 @@ Smaller things we found while testing:
 - The dashboard can't start a backlog run, so testing the analysis
   stages needs the terminal. A "run on stored articles" button would
   fix that.
-- FilterPanel is the next feature. It needs a design decision first,
-  because the aggregation plan saves its results in a way that can't be
-  filtered yet.
+- The filter panel and keyword search exist as MVPs (README, "MVP
+  features — come back to these"). When the aggregation agent lands, its
+  snapshot can't be filtered as planned, so `/results` has to keep
+  filtering per request or the snapshot has to change shape.
+
+### Merging dashboard-mvp and e2e-testing
+
+Both branches can't be on main unchanged. Whoever merges second updates
+the e2e tests (`backend/e2e/`):
+
+- `/results` now counts topics as the newest `topic_results` row per
+  analysable article, so R1 in `test_2_results_api.py`, which is built
+  on `database.topic_facet()`, must be rewritten against those rules.
+- D1 in `test_3_dashboard.py` expects the removed texts "From the topic
+  agent:" and "Two hardcoded rows."
+- D2 and D3 expect the AdminConsole on page load. It is now behind the
+  "Pipeline runs" tab.

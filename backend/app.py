@@ -4,8 +4,10 @@ ClassroomScope API Gateway (SS-4) — entry point.
 STATUS:
   * /api/v1/runs  — pipeline coordinator endpoints (sequencing built,
                     agents are stubs until each owner's agent is ready)
-  * /api/v1/results — top_topics is counted live from topic_results;
-                      sentiment and articles are still a hardcoded stub
+  * /api/v1/results — the analysable articles and their topic counts,
+                      filtered per request (orchestrator/corpus.py);
+                      sentiment is still a hardcoded placeholder
+  * /api/v1/search/comments — keyword search over article comments
   * The run store is Supabase when SUPABASE_URL / SUPABASE_KEY are set,
     in-memory otherwise — see build_run_store() below.
   * Auth and the real data access layer are NOT connected yet — see the
@@ -16,7 +18,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from orchestrator import (
@@ -25,11 +27,15 @@ from orchestrator import (
     PipelineCoordinator,
     build_default_registry,
 )
+from orchestrator import corpus
 from orchestrator.routes import create_runs_blueprint
 from orchestrator.supabase_store import SupabaseRunStore
-from orchestrator.topic_counts import reader_from_env
 
 logger = logging.getLogger(__name__)
+
+# Shaped like what the aggregation agent will produce, but invented: no
+# stage aggregates sentiment_results into /results yet.
+PLACEHOLDER_SENTIMENT = {"positive": 0.55, "neutral": 0.23, "negative": 0.22}
 
 # Reads backend/.env whatever the working directory. Real environment
 # variables win, so deployments can set them without a file.
@@ -63,11 +69,11 @@ def build_run_store():
     return SupabaseRunStore.from_env()
 
 
-def create_app(runner=None, read_topics=None):
+def create_app(runner=None, read_corpus=None, search_comments=None):
     """
-    Build the Flask app. Tests pass in their own runner and topic reader;
-    normal startup builds the defaults (agents and run store from the
-    environment, topic counts from topic_results when Supabase is set).
+    Build the Flask app. Tests pass in their own runner, corpus reader and
+    comment search; normal startup builds the defaults (agents and run
+    store from the environment, the corpus from Supabase when it is set).
     """
     app = Flask(__name__)
     CORS(app)  # TODO: restrict origins before this leaves localhost
@@ -75,9 +81,18 @@ def create_app(runner=None, read_topics=None):
     if runner is None:
         coordinator = PipelineCoordinator(build_default_registry(), build_run_store())
         runner = BackgroundRunner(coordinator)
-    if read_topics is None:
-        read_topics = reader_from_env()
+    if read_corpus is None or search_comments is None:
+        default_read, default_search = corpus.from_env()
+        read_corpus = read_corpus or default_read
+        search_comments = search_comments or default_search
     app.register_blueprint(create_runs_blueprint(runner))
+
+    def filters_or_400():
+        """The request's filters, or a 400 response saying what is wrong with them."""
+        try:
+            return corpus.parse_filters(request.args), None
+        except ValueError as exc:
+            return None, (jsonify({"error": str(exc)}), 400)
 
     @app.get("/api/v1/health")
     def health():
@@ -87,45 +102,44 @@ def create_app(runner=None, read_topics=None):
     @app.get("/api/v1/results")
     def get_results():
         """
-        Results for the dashboard, partly real.
+        The dashboard's data, narrowed by the filter query params: from,
+        to, source_type, stakeholder, topic, q (see orchestrator/corpus.py).
 
-        top_topics is counted from topic_results on each request, in the
-        shape the aggregation snapshot will use (see orchestrator/
-        topic_counts.py). sentiment_distribution and articles are still
-        hardcoded, shaped like what the real Aggregation Service (design
-        doc, Section 6.5) will produce, so the front end can be built
-        against a stable contract before the real pipeline exists.
+        Articles and top topics are real. sentiment_distribution is still
+        a placeholder until the sentiment agent is wired in.
 
-        TODO:
-          - accept filter query params (date range, source, topic)
-          - replace the hardcoded parts with real aggregates once the
-            aggregation agent exists
-          - add auth check once Session/Auth Context (SS-5) is wired in
+        TODO: add auth check once Session/Auth Context (SS-5) is wired in
         """
+        filters, error = filters_or_400()
+        if error:
+            return error
         return jsonify({
-            "sentiment_distribution": {
-                "positive": 0.55,
-                "neutral": 0.23,
-                "negative": 0.22,
-            },
-            "top_topics": read_topics(),
-            "articles": [
-                {
-                    "id": "stub-1",
-                    "title": "Universities rewrite AI policy amid ChatGPT concerns",
-                    "source": "National",
-                    "stakeholder": "Administrator",
-                    "sentiment": "neutral",
-                },
-                {
-                    "id": "stub-2",
-                    "title": "Teachers embrace AI tutors in the classroom",
-                    "source": "Trade",
-                    "stakeholder": "Educator",
-                    "sentiment": "positive",
-                },
-            ],
+            "sentiment_distribution": PLACEHOLDER_SENTIMENT,
+            **corpus.results_payload(read_corpus(), filters),
         })
+
+    @app.get("/api/v1/search/comments")
+    def get_comment_search():
+        """
+        Comments containing `q` on the articles the other filters allow.
+
+        `q` doesn't narrow the articles here: a comment can use a word its
+        article never does.
+        """
+        filters, error = filters_or_400()
+        if error:
+            return error
+        if not filters["q"]:
+            return jsonify({"error": "'q' is required."}), 400
+        current = read_corpus()
+        if not current["available"]:
+            return jsonify(corpus.comments_unavailable(current["reason"]))
+        articles = corpus.filter_articles(current["articles"], {**filters, "q": ""})
+        try:
+            return jsonify(search_comments(articles, filters["q"]))
+        except Exception:
+            logger.exception("Comment search failed")
+            return jsonify(corpus.comments_unavailable("Could not search comments; see the backend log."))
 
     return app
 
