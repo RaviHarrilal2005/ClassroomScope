@@ -6,3 +6,7 @@ pytest>=7.0
 # the editor's Pylance runs on, so it catches the same errors outside the IDE.
 # Pulls in nodeenv, which fetches a private node runtime on first run.
 pyright>=1.1.400
+
+# End-to-end suite (backend/e2e): drives the dashboard in Chromium. After
+# installing, once per machine: python -m playwright install chromium
+pytest-playwright>=0.7

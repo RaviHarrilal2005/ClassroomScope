@@ -106,9 +106,23 @@ python run_pipeline.py                   # run once with stubs, print each stage
 python run_pipeline.py --fail topic      # see how a failing agent is handled
 python run_pipeline.py --live --backlog  # the real agents, over articles already
                                          # stored (no API quota, no downloads)
-python -m pytest tests agents/topic      # run the backend test suite
+python -m pytest                        # the offline test suite (172 tests)
 python -m pyright backend/               # type check (from the repo root)
 ```
+
+**End-to-end checks** (from `backend`; these write to the Supabase
+project in `.env`)
+```
+pip install -r requirements-dev.txt
+python -m playwright install chromium    # once per machine, about 150 MB
+python -m pytest e2e                     # real pipeline over 5 stored articles,
+                                         # the API, and the dashboard in Chromium
+python -m pytest e2e --collect           # plus one real RSS + GNews collection
+```
+Each session writes `backend/e2e/results/<date-time>/results.md` with the
+screenshots. `E2E_ENV_FILE=<file>` points the suite at another database;
+the first lines of the output name the database in use.
+The latest report: [docs/testing/e2e-test-report.md](docs/testing/e2e-test-report.md).
 
 **Front end** (separate terminal)
 ```
@@ -145,6 +159,8 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | Redesign | Topic chart labels wrap to two lines at most | Labels over ~56 characters clip | Measure text, or wrap to N lines |
 | Pipeline runs | All 20 recent runs listed; Start a run has no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
 | Frontend | No frontend tests | Regressions caught by eye | Vitest + Testing Library |
+| End-to-end checks (`backend/e2e`) | Run against the team's shared Supabase project: 5 stored articles per run, real collection only with `--collect` | Every run writes to team data: run history, re-written classifications, sometimes new articles | A separate test database, selected with `E2E_ENV_FILE=.env.test` |
+| End-to-end checks (`backend/e2e`) | Dashboard checks find elements by their visible text and layout | A redesign that changes that text breaks D1–D3, and the October redesign did: D1 fails today, D2 and D3 are untested against it | `data-testid` attributes on the elements the tests use |
 
 ## Next steps (planned)
 
