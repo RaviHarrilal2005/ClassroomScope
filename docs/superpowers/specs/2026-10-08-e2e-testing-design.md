@@ -88,12 +88,12 @@ need the team's secrets; load, performance and cross-browser testing.
   test server. NewsAPI is never used: one run can add around 1,800
   articles.
 - **Frontend.** Built once per session with Vite into a temporary folder,
-  with `VITE_API_BASE_URL` pointing at the test backend, and served by
+  with `VITE_API_URL` pointing at the test backend, and served by
   Python's built-in HTTP server from a thread on a free port. This tests
   the production build and cannot collide with dev servers on 5173 or
   5000.
 - **App change this needs:** `frontend/src/api/apiClient.js` reads its
-  base address from `import.meta.env.VITE_API_BASE_URL`, defaulting to
+  base address from `import.meta.env.VITE_API_URL`, defaulting to
   today's `http://localhost:5000/api/v1`.
 - **Browser.** Playwright's headless Chromium. Console messages and page
   errors are captured for every page.

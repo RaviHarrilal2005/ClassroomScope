@@ -253,13 +253,20 @@ Starting a run while another is active returns `409` with the active run's ID.
 
 ## Testing plan
 
-98 tests, none of which touch the network: stage order, the four
+133 offline tests, none of which touch the network: stage order, the four
 analysis agents running at the same time, each failure rule, the API,
-the Supabase store against a fake client, and the adapters against fake
-agent modules. The suite passes `live=False`, so it behaves the same
-with or without credentials in `backend/.env`. Three of them are the
-topic owner's offline tests in `agents/topic/`; the rest are in
-`tests/`.
+the Supabase store against a fake client, the adapters against fake
+agent modules, and the end-to-end suite's own safety rails. The suite
+passes `live=False`, so it behaves the same with or without credentials
+in `backend/.env`. Plain `pytest` runs them (`backend/pytest.ini`).
+
+The end-to-end suite in `backend/e2e/` checks the real thing: a pipeline
+run over 5 stored articles through the API, the results endpoint against
+Supabase's own counts, the dashboard in Chromium, and with `--collect` a
+real collection run. It writes to the database it is pointed at, so it
+runs only when named. Design:
+[`docs/superpowers/specs/2026-10-08-e2e-testing-design.md`](superpowers/specs/2026-10-08-e2e-testing-design.md);
+latest report: [`docs/testing/e2e-test-report.md`](testing/e2e-test-report.md).
 
 Tests get added alongside the features they cover:
 
@@ -267,11 +274,13 @@ Tests get added alongside the features they cover:
 |---|---|---|
 | switch to the Supabase tables | the Supabase store, and a check that the SQL and code stay in sync | **landed** |
 | plug in the real agents | malformed output, duplicate articles, quarantined articles, misbehaving agents | **landed** |
-| have the dashboard poll run status | the run-list and run-status endpoints | waiting |
+| have the dashboard poll run status | the run-list and run-status endpoints | **landed** |
 | settle the retry settings | retry counts and backoff timing | waiting |
 | add scheduled runs or single-stage re-runs | run lifecycle rules | waiting |
 
-The three groups still waiting are in `tests-to-add-later/`.
+The two groups still waiting are listed in `tests-to-add-later/README.txt`.
+Their tests were never committed, so they get written when their trigger
+is met.
 
 ## For agent owners: plugging in your agent
 

@@ -54,3 +54,34 @@ def test_invalid_trigger_type_is_rejected():
 def test_unknown_run_returns_404():
     client, _ = build_client()
     assert client.get("/api/v1/runs/999").status_code == 404
+
+
+def test_run_list_is_newest_first_and_honours_the_limit():
+    client, runner = build_client()
+    ids = []
+    for _ in range(3):
+        ids.append(client.post("/api/v1/runs").get_json()["id"])
+        assert runner.wait(timeout=5)
+
+    listing = client.get("/api/v1/runs?limit=2").get_json()
+    assert [r["id"] for r in listing["runs"]] == [ids[2], ids[1]]
+    assert listing["active_run_id"] is None
+
+
+def test_run_list_names_the_run_in_progress():
+    gate = threading.Event()
+
+    def slow_collection(ctx):
+        gate.wait(timeout=5)   # hold the run open until the test releases it
+        return {"article_ids": [1]}
+
+    registry = build_default_registry(live=False)
+    registry.register(COLLECTION, StubAgent("slow_collection", output=slow_collection))
+    client, runner = build_client(registry)
+
+    run_id = client.post("/api/v1/runs").get_json()["id"]
+    assert client.get("/api/v1/runs").get_json()["active_run_id"] == run_id
+
+    gate.set()
+    assert runner.wait(timeout=5)
+    assert client.get("/api/v1/runs").get_json()["active_run_id"] is None
