@@ -1,7 +1,8 @@
-"""D1-D3: the dashboard in Chromium, against the real backend."""
+"""D1-D4: the dashboard in Chromium, against the real backend."""
 import re
 from decimal import ROUND_HALF_UP, Decimal
 
+import requests
 from playwright.sync_api import expect
 
 from e2e import database
@@ -51,6 +52,29 @@ def test_d1_dashboard_shows_real_topics_and_sentiment(
     expect(page.locator("table.data-table tbody tr")).to_have_count(total)
     screenshot(page, results_dir, "D1-dashboard.png", record_property)
     assert problems == []
+
+
+def test_d4_a_search_with_one_sentiment_labels_only_its_slice(page, frontend, backend, environment):
+    # Filters can leave a sentiment at 0%; a zero slice's label is drawn on
+    # top of the other zero slice's. Search for one article's title so some
+    # share is zero, then expect a label only for each share above zero.
+    titles = [row["title"] for row in environment.client.table("articles").select("title")
+              .eq("llm_relevant", True).eq("processing_status", "success").order("id", desc=True)
+              .limit(20).execute().data if 25 <= len(row["title"] or "") <= 100]
+    for title in titles:
+        body = requests.get(f"{backend.url}/api/v1/results", params={"q": title}, timeout=60).json()
+        if body["analysed"] and 0 in body["sentiment_distribution"].values():
+            break
+    else:
+        raise AssertionError("no recent title gives a search with a zero sentiment share")
+    shown = {name: share for name, share in body["sentiment_distribution"].items() if share > 0}
+
+    page.goto(frontend.url, timeout=PAGE_TIMEOUT)
+    page.get_by_placeholder("e.g. cheating").fill(title)
+    page.get_by_role("button", name="Search").click()
+    expect(page.get_by_text(f"Share of the {body['analysed']} matching article(s)")).to_be_visible(timeout=PAGE_TIMEOUT)
+    expect(page.locator(".recharts-pie-label-text")).to_have_text(
+        [f"{name.capitalize()} {percent(share)}%" for name, share in shown.items()])
 
 
 def test_d2_admin_console_lists_the_api_run(page, frontend, api_run):

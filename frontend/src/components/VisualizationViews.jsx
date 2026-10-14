@@ -23,13 +23,17 @@ const SENTIMENTS = [
   { field: "negative", name: "Negative", fill: RED.fg },
 ];
 
-/** Positive / neutral / negative shares (0–1) as a donut, each slice labelled. */
+/**
+ * Positive / neutral / negative shares (0–1) as a donut, each slice labelled.
+ * A 0% share gets no slice: Recharts still labels an empty slice, and two of
+ * them land on the same spot, unreadable.
+ */
 export function SentimentDonut({ distribution }) {
   const data = SENTIMENTS.map(({ field, name, fill }) => ({
     name,
     value: distribution[field],
     fill,
-  }));
+  })).filter((slice) => slice.value > 0);
 
   return (
     <div className="chart chart-donut">
