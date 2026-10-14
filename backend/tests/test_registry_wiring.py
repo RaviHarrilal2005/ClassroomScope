@@ -28,8 +28,8 @@ from orchestrator.stages import (
     TOPIC,
 )
 
-REAL_STAGES = (COLLECTION, SECURITY, CLASSIFICATION)
-STILL_STUBBED = (STANCE, AGGREGATION)
+REAL_STAGES = (COLLECTION, SECURITY, CLASSIFICATION, AGGREGATION)
+STILL_STUBBED = (STANCE,)
 
 
 def test_every_stage_has_an_agent_either_way():

@@ -28,7 +28,7 @@ Which stages are real (see docs/pipeline-coordinator.md):
                   registry builds it directly, no shell needed); a stub
                   elsewhere
   stance          stub - no implementation on any branch yet
-  aggregation     stub - no implementation yet
+  aggregation     real - AggregationAgent (sentiment figures over the corpus)
 """
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ import logging
 import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+from orchestrator import corpus
 from orchestrator.agents import Agent
 from orchestrator.models import RunContext
 
@@ -449,3 +450,23 @@ class TopicAgent(Agent):
         from .topic import topic_model
 
         return topic_model.TopicAgent().run(ctx)
+
+
+# ---------------------------------------------------------------------
+# Aggregation
+# ---------------------------------------------------------------------
+class AggregationAgent(Agent):
+    """
+    Computes the dashboard's sentiment figures over the whole corpus and
+    reports how many articles they cover. Nothing is stored: /results
+    recomputes them per request, so this stage is the run's check that
+    the analysis tables can be read and aggregated. It fails if they can't.
+    """
+
+    name = "aggregation"
+
+    def run(self, ctx: RunContext) -> Dict[str, Any]:
+        from .aggregation.compute import sentiment_figures
+
+        figures = sentiment_figures(corpus.read_corpus(get_client()))
+        return {"aggregated": figures["analysed"]}
