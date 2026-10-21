@@ -6,14 +6,16 @@ What goes wrong here is quiet: an irrelevant article counted, the keyword
 baseline overriding the LLM's label, a capped page dropping rows, or a
 `%` in a search matching everything.
 """
+from typing import Optional
+
 import pytest
 
 from fake_supabase import FakeSupabase
 from orchestrator import corpus
 
 
-def article(id, title="An article", date="2026-09-01T10:00:00+00:00", content="Some text.",
-            relevant=True, status="success", **extra):
+def article(id, title="An article", date="2026-09-01T10:00:00+00:00", content: Optional[str] = "Some text.",
+            relevant: Optional[bool] = True, status="success", **extra):
     return {"id": id, "title": title, "source": "Example News", "url": f"https://example.com/{id}",
             "published_date": date, "clean_content": content, "llm_relevant": relevant,
             "processing_status": status, **extra}
