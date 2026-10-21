@@ -82,6 +82,12 @@ def articles_with_rows(client: Any, table: str, ids: Set[int]) -> Set[int]:
     return {row["article_id"] for row in rows}
 
 
+def corpus_ids(client: Any) -> Set[int]:
+    """Every analysable article: LLM-confirmed relevant and downloaded."""
+    return {row["id"] for row in page_all(lambda: client.table("articles").select("id")
+                                          .eq("llm_relevant", True).eq("processing_status", "success").order("id"))}
+
+
 def topic_facet(client: Any) -> Dict[str, Any]:
     """
     The /results topic facet, worked out from the raw tables.
@@ -91,8 +97,7 @@ def topic_facet(client: Any) -> Dict[str, Any]:
     stable topic ID, means unassigned.
     """
     topics = json.loads(TOPIC_CATALOG.read_text())["topics"]
-    corpus = {row["id"] for row in page_all(lambda: client.table("articles").select("id")
-                                            .eq("llm_relevant", True).eq("processing_status", "success").order("id"))}
+    corpus = corpus_ids(client)
     newest = {row["article_id"]: row["stable_topic_id"] for row in page_all(
         lambda: client.table("topic_results").select("article_id, stable_topic_id").order("id"))}
     counts = Counter(newest[a] for a in corpus if newest.get(a))
@@ -100,3 +105,22 @@ def topic_facet(client: Any) -> Dict[str, Any]:
                    key=lambda item: (-item["count"], item["label"]))
     counted = sum(counts.values())
     return {"counted": counted, "unassigned": len(corpus) - counted, "items": items}
+
+
+def sentiment_facet(client: Any) -> Dict[str, Any]:
+    """
+    The /results sentiment share, worked out from the raw tables: one
+    sentiment per analysable article, its roberta_news row before any
+    other method, then the newest.
+    """
+    best: Dict[int, Dict[str, Any]] = {}
+    for row in page_all(lambda: client.table("sentiment_results")
+                        .select("id, article_id, sentiment, method").order("id")):
+        current = best.get(row["article_id"])
+        if current is None or (row["method"] == "roberta_news") >= (current["method"] == "roberta_news"):
+            best[row["article_id"]] = row
+    labels = [best[a]["sentiment"] for a in corpus_ids(client) if a in best]
+    labels = [label for label in labels if label in ("positive", "neutral", "negative")]
+    n = len(labels)
+    return {"analysed": n,
+            "shares": {s: (labels.count(s) / n if n else 0) for s in ("positive", "neutral", "negative")}}

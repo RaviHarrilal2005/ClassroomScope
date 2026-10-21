@@ -70,7 +70,7 @@ offline tests, which never touch the network.
 | P4 | The run list | The new run first; nothing active once it has finished | Pass | |
 | P5 | The database itself, read directly | The run and its 7 stage rows final; classification rows written during the run for exactly 5 analysable articles; a topic row for each | Pass | articles 36, 45, 47, 49, 51 |
 | R1 | `/api/v1/results` topic counts | Equal to the counts worked out from the raw tables: one topic per analysable article, the newest row, none means unassigned | Pass | 135 articles with a topic, 188 unassigned (first run) |
-| D1 | The dashboard in Chromium | No console errors; both charts drawn; the topic line, bars and article table match the database; no label cut off; the sentiment placeholder note shown | Pass | screenshot below |
+| D1 | The dashboard in Chromium | No console errors; both charts drawn; the topic line, bars, article table and sentiment donut match the database; no label cut off | Pass | screenshot below |
 | D2 | The Pipeline runs tab | P's run listed, its badge reading exactly `completed` | Pass | |
 | D3 | "Start a run" on the dashboard | The button disables; stages move from running to succeeded; the run ends `completed` | Pass | run #29 |
 | C1 | A real RSS + GNews collection run | Completes, whether or not there was new on-topic news | Pass | run #30 found nothing new |
@@ -162,6 +162,20 @@ Two things changed in what the checks assert:
 D2 and D3 now also fail at once on a run that ends `completed with
 errors` or `failed`, instead of waiting five minutes, and D3 waits for the
 console to load before clicking.
+
+## Aggregation lands (2026-10-13)
+
+The aggregation stage is real now, and the dashboard's sentiment donut
+shows `sentiment_results` instead of hardcoded figures. R1 checks the
+API's sentiment share against the raw table (one result per analysable
+article, RoBERTa's row first), and D1 checks the donut's labels against
+the same numbers. The full suite passed, 11 of 11 without `--collect`
+(runs #51 and #52, both `completed`, with aggregation `succeeded`): 323
+analysed articles, 72% neutral, 15% negative, 12% positive.
+
+P2's note now names the stages the registry actually stubbed. On the
+machine that ran it, that was sentiment (its libraries are not installed
+there) and stance.
 
 ## Database footprint
 

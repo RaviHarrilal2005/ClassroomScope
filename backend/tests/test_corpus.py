@@ -87,6 +87,28 @@ def test_the_newest_topic_row_wins_and_no_stable_id_means_unassigned():
     assert (by_id[2]["stable_topic_id"], by_id[2]["topic"]) == (None, None)
 
 
+def sentiment(article_id, label, method="roberta_news", id=None):
+    return {"id": id or article_id, "article_id": article_id, "sentiment": label, "method": method}
+
+
+def test_roberta_beats_vader_whatever_the_row_order_and_no_row_means_none():
+    client = FakeSupabase(
+        articles=[article(1), article(2), article(3)],
+        sentiment_results=[
+            sentiment(1, "positive", id=1), sentiment(1, "negative", "vader", id=9),
+            sentiment(2, "neutral", "vader", id=2), sentiment(2, "negative", "vader", id=8),
+        ],
+    )
+    by_id = {a["id"]: a["sentiment"] for a in corpus.read_corpus(client)}
+    assert by_id == {1: "positive", 2: "negative", 3: None}
+
+
+def test_every_sentiment_page_is_read_even_when_the_server_caps_pages():
+    client = FakeSupabase(cap=2, articles=[article(i) for i in range(1, 6)],
+                          sentiment_results=[sentiment(i, "neutral") for i in range(1, 6)])
+    assert [a["sentiment"] for a in corpus.read_corpus(client)] == ["neutral"] * 5
+
+
 def test_every_page_is_read_even_when_the_server_caps_pages():
     client = FakeSupabase(cap=2, articles=[article(i) for i in range(1, 6)],
                           topic_results=[topic(i, "T001", "Adoption") for i in range(1, 6)])

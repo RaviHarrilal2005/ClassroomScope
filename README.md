@@ -13,8 +13,9 @@ building out the real views.
   - `GET /api/v1/health` — reachability check
   - `GET /api/v1/results` — the analysable articles (328 on 2026-10-11) and their topic
     counts, narrowed by `from`, `to`, `source_type`, `stakeholder`,
-    `topic` and `q` (`orchestrator/corpus.py`). Sentiment is still a
-    hardcoded placeholder
+    `topic` and `q` (`orchestrator/corpus.py`), with sentiment figures
+    for the same articles: the share, and by month, topic and
+    stakeholder (`agents/aggregation/`)
   - `GET /api/v1/search/comments` — keyword search over the article
     comments, on the articles the other filters allow
 - React front end (`frontend/`) with the three layers from the design
@@ -35,8 +36,8 @@ building out the real views.
 - ExportControls — see design doc Section 2 for what it needs to do
 - Auth / session context (SS-5 login) — apiClient has TODOs where the
   token will attach
-- Real sentiment figures — the donut is still a hardcoded placeholder
-  in `app.py` (see the MVP table below)
+- Charts for the sentiment breakdowns — `/results` carries them (by
+  month, topic and stakeholder), but only the overall donut is drawn
 
 ## Pipeline coordinator (in progress)
 
@@ -52,7 +53,8 @@ keeps the results of stages that succeeded when another fails.
   source type) and topic (a saved BERTopic model, stored in the repo with
   Git LFS; where it is missing, topic stays a stub). Sentiment (RoBERTa, with
   VADER as its fallback) runs where `transformers` and `vaderSentiment`
-  are installed; stance and aggregation have no implementation. Each owner's code
+  are installed; aggregation computes the dashboard's sentiment figures;
+  stance has no implementation. Each owner's code
   lives in `backend/agents/<stage>/`.
 - The registry picks real agents when Supabase is configured and stubs
   otherwise, so the app and the tests still work without credentials.
@@ -144,7 +146,7 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 
 | Feature | Shortcut | Ceiling | Better version |
 |---|---|---|---|
-| Filters | Corpus read from 3 tables and filtered in Python per request, behind a 60s cache (`orchestrator/corpus.py`) | Slows as the corpus grows; up to 60s stale after a run | Aggregation snapshot or a Postgres view/RPC |
+| Filters | Corpus read from 4 tables and filtered in Python per request, behind a 60s cache (`orchestrator/corpus.py`) | Slows as the corpus grows; up to 60s stale after a run | Aggregation snapshot or a Postgres view/RPC |
 | Filters | One value per filter | Can't compare two stakeholders | Multi-select |
 | Filters | Not kept in the URL; nor is the Dashboard / Pipeline runs tab | A filtered view can't be shared, bookmarked or survive a refresh | Sync filters and view to the query string |
 | Filters | Topic options are the full list, not narrowed by the other filters | Some combinations give zero rows | Facet counts per option |
@@ -154,7 +156,7 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | Search | Case-insensitive substring, first match only | No ranking, stemming or phrases | Postgres full-text search (`tsvector`) with ranking |
 | Search | `*` acts as a wildcard (PostgREST has no escape for it) | `a*b` matches more than it says | Search through an RPC function |
 | Search | Comment search capped at the newest 50, no paging; article IDs sent in the URL | Can't browse all matches; breaks past ~1,500 articles | Paging, and an RPC taking the filters |
-| Dashboard | Sentiment donut is a hardcoded placeholder | Not real data, and filters don't move it | Aggregate `sentiment_results` once the agent is wired in |
+| Aggregation | Sentiment figures recomputed from the cached corpus on every request; the pipeline stage checks they can be computed and stores nothing (`agents/aggregation/`) | No record of the figures per run, so runs can't be compared over time | A snapshot row per run |
 | Redesign | Light theme only; badge colours inline in `StatusBadge` | Ignores an OS dark-mode preference | `prefers-color-scheme` token set, badge colours as tokens |
 | Redesign | Topic chart labels wrap to two lines at most | Labels over ~56 characters clip | Measure text, or wrap to N lines |
 | Pipeline runs | All 20 recent runs listed; Start a run has no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |

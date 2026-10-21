@@ -357,3 +357,24 @@ def test_ids_are_queried_in_batches(fake_client):
     ctx = RunContext(run_id=1, article_ids=list(range(1, count + 1)))
 
     assert len(SecurityAgent().run(ctx)["approved_ids"]) == count
+
+
+def test_aggregation_reports_the_analysed_articles_in_the_whole_corpus(monkeypatch):
+    from agents.adapters import AggregationAgent
+    rows = [{"id": 1, "sentiment": "positive"}, {"id": 2, "sentiment": None}, {"id": 3, "sentiment": "neutral"}]
+    monkeypatch.setattr("agents.adapters.get_client", lambda: object())
+    monkeypatch.setattr("orchestrator.corpus.read_corpus", lambda client: rows)
+    ctx = RunContext(run_id=1, article_ids=[1], approved_ids=[1])
+    assert AggregationAgent().run(ctx) == {"aggregated": 2}
+
+
+def test_aggregation_raises_when_the_tables_cannot_be_read(monkeypatch):
+    from agents.adapters import AggregationAgent
+
+    def boom(client):
+        raise RuntimeError("table missing")
+
+    monkeypatch.setattr("agents.adapters.get_client", lambda: object())
+    monkeypatch.setattr("orchestrator.corpus.read_corpus", boom)
+    with pytest.raises(RuntimeError, match="table missing"):
+        AggregationAgent().run(RunContext(run_id=1, article_ids=[], approved_ids=[]))

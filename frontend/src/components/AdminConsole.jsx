@@ -13,10 +13,10 @@
  *   * Only one run may be active. A second POST returns 409 with the
  *     active run's id; the store switches to that run rather than just
  *     showing an error.
- *   * Three of the seven stages are stubs (sentiment, stance,
- *     aggregation). They succeed in about a millisecond without doing
- *     anything, which looks identical to real work from here — hence the
- *     note under the stage table.
+ *   * Some stages can be stubs (stance everywhere; sentiment where its
+ *     libraries are missing). They succeed in about a millisecond without
+ *     doing anything, which looks identical to real work from here —
+ *     hence the note under the stage table.
  *
  * TODO(auth): the whole panel should be admin-only once login (SS-5)
  * exists. The backend has the matching TODO on POST /runs.
@@ -30,13 +30,14 @@ import {
   formatTime,
 } from "./statusStyles";
 
-// Stages that are stubs everywhere today: sentiment is a standalone
-// script the pipeline can't call yet, and stance and aggregation have
-// no implementation. Flagged so nobody reads "succeeded" as "analysed
-// something". Topic is left out: it runs for real wherever its model
-// was pulled with Git LFS. Where it wasn't, topic is a stub this list
-// can't see; the fix is for the backend to report which agent ran.
-const STUBBED_STAGES = ["sentiment", "stance", "aggregation"];
+// Stages that are often stubs: stance has no implementation, and
+// sentiment is a stub wherever transformers or vaderSentiment is not
+// installed. Flagged so nobody reads "succeeded" as "analysed
+// something". Topic and aggregation are left out: they run for real
+// wherever the backend has its model and Supabase. Where they don't,
+// they are stubs this list can't see; the fix is for the backend to
+// report which agent ran.
+const STUBBED_STAGES = ["sentiment", "stance"];
 
 export default function AdminConsole() {
   const {

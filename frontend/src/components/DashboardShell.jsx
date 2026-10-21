@@ -6,11 +6,9 @@
  * reads from ViewStateContext, which reloads whenever the filters
  * change; nothing here fetches.
  *
- * STATUS:
- *   - Top topics, the article table and comment search are real,
- *     filtered by the backend (orchestrator/corpus.py).
- *   - Sentiment is still a hardcoded placeholder in /results, labelled
- *     as such rather than left to look real.
+ * STATUS: everything shown is real and filtered by the backend: top
+ * topics, the article table and comment search (orchestrator/corpus.py),
+ * and the sentiment share (agents/aggregation/compute.py).
  *
  * NOT built yet: ExportControls, login. See design doc Section 2.
  */
@@ -85,12 +83,7 @@ function Dashboard() {
             <div className="chart-row">
               <section className="card">
                 <h2>Sentiment toward GAI in education</h2>
-                <PlaceholderNote>
-                  Placeholder figures, hardcoded in <code>/results</code> — not computed from the
-                  corpus, and the filters don't change them. Nothing aggregates{" "}
-                  <code>sentiment_results</code> into this endpoint yet.
-                </PlaceholderNote>
-                <SentimentDonut distribution={results.sentiment_distribution} />
+                <Sentiment results={results} />
               </section>
 
               <section className="card">
@@ -131,7 +124,18 @@ function TopTopics({ facet }) {
   );
 }
 
-/** Marks a section as showing data the pipeline did not produce. */
-function PlaceholderNote({ children }) {
-  return <p className="placeholder-note">{children}</p>;
+/**
+ * The sentiment share of the filtered articles, or the reason there is
+ * none: with no analysed articles, a donut of zeros would draw nothing.
+ */
+function Sentiment({ results }) {
+  if (results.analysed === 0) return <p className="empty-note">{results.sentiment_reason}</p>;
+  return (
+    <>
+      <p className="card-subtitle">
+        Share of the {results.analysed} matching article(s) with a sentiment result.
+      </p>
+      <SentimentDonut distribution={results.sentiment_distribution} />
+    </>
+  );
 }

@@ -9,10 +9,12 @@ from orchestrator import corpus
 ARTICLES = [
     {"id": 1, "title": "Teachers try AI tutors", "source": "Example News", "url": "https://example.com/1",
      "published_date": "2026-09-01T10:00:00+00:00", "clean_content": "Teachers say tutors help.",
-     "source_type": "news_outlet", "stakeholder": "educators", "stable_topic_id": "T001", "topic": "Adoption"},
+     "source_type": "news_outlet", "stakeholder": "educators", "stable_topic_id": "T001", "topic": "Adoption",
+     "sentiment": "positive"},
     {"id": 2, "title": "Students and cheating", "source": "A Blog", "url": "https://example.com/2",
      "published_date": "2026-08-01T10:00:00+00:00", "clean_content": "Cheating with chatbots rises.",
-     "source_type": "blog", "stakeholder": "students", "stable_topic_id": "T004", "topic": "Integrity"},
+     "source_type": "blog", "stakeholder": "students", "stable_topic_id": "T004", "topic": "Integrity",
+     "sentiment": "negative"},
 ]
 
 
@@ -39,7 +41,8 @@ def test_results_without_filters_lists_the_whole_corpus():
     body = client.get("/api/v1/results").get_json()
     assert (body["articles"]["total"], body["articles"]["corpus"]) == (2, 2)
     assert [a["id"] for a in body["articles"]["items"]] == [1, 2]
-    assert body["sentiment_distribution"] == {"positive": 0.55, "neutral": 0.23, "negative": 0.22}
+    assert body["sentiment_distribution"] == {"positive": 0.5, "neutral": 0, "negative": 0.5}
+    assert body["analysed"] == 2 and body["sentiment_reason"] is None
     assert body["filter_options"]["stakeholders"] == ["educators", "students"]
 
 
@@ -50,6 +53,8 @@ def test_results_applies_the_filters_to_articles_and_topics():
     assert body["articles"]["items"][0]["snippet"] == "Cheating with chatbots rises."
     assert body["top_topics"]["items"] == [{"label": "Integrity", "count": 1}]
     assert "clean_content" not in body["articles"]["items"][0]
+    assert body["sentiment_distribution"] == {"positive": 0, "neutral": 0, "negative": 1.0}
+    assert [r["label"] for r in body["sentiment_by_stakeholder"]] == ["students"]
 
 
 def test_results_refuses_a_bad_date():
@@ -68,6 +73,14 @@ def test_results_without_a_database_still_loads_and_says_why():
     assert body["articles"]["available"] is False
     assert body["articles"]["reason"] == "Database down."
     assert body["top_topics"]["available"] is False
+    assert body["analysed"] == 0 and body["sentiment_reason"] == "Database down."
+
+
+def test_filters_that_match_nothing_give_empty_figures_with_the_reason():
+    client, _ = build_client(read_corpus=available, search_comments=RecordingSearch())
+    body = client.get("/api/v1/results?stakeholder=parents").get_json()
+    assert body["analysed"] == 0
+    assert body["sentiment_reason"] == "No analysed articles match these filters."
 
 
 def test_comment_search_needs_a_query():
