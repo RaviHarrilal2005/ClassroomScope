@@ -100,12 +100,6 @@ the headline with `sentiment_results`.
 
 Smaller things we found while testing:
 
-- The "stub" tag next to each stage comes from a fixed list in
-  `frontend/src/components/AdminConsole.jsx`. Topic is off the list now
-  that its model is in the repo, but on a computer without the model,
-  topic is a stub the dashboard won't tag. The backend should report
-  which agent actually ran each stage, and the dashboard should show
-  that.
 - The filter panel and keyword search exist as MVPs (README, "MVP
   features — come back to these"). The sentiment figures follow the
   filters because they are computed per request; a snapshot table, if

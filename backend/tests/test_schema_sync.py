@@ -30,7 +30,7 @@ def table(sql, name):
 
 
 def columns(block):
-    return set(re.findall(r"^\s{2}(\w+)\s+(?:bigint|text|timestamptz|integer)\b", block, re.M))
+    return set(re.findall(r"^\s{2}(\w+)\s+(?:bigint|text|timestamptz|integer|boolean)\b", block, re.M))
 
 
 def allowed_values(block, column):

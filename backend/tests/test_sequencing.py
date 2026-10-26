@@ -5,7 +5,7 @@ import pytest
 
 from helpers import stages_by_name
 from orchestrator import AgentRegistry, InMemoryRunStore, PipelineCoordinator
-from orchestrator.agents import Output, OutputSource, StubAgent, stub_collection
+from orchestrator.agents import Agent, Output, OutputSource, StubAgent, stub_collection
 from orchestrator.stages import (
     AGGREGATION,
     ANALYSIS_STAGES,
@@ -13,6 +13,8 @@ from orchestrator.stages import (
     PIPELINE_ORDER,
     SECURITY,
     SENTIMENT,
+    STANCE,
+    TOPIC,
     RunStatus,
     StageStatus,
 )
@@ -136,6 +138,28 @@ def test_a_backlog_run_passes_its_size_on_and_says_it_reused_articles(make_coord
 
     assert seen == {"backlog_limit": 5}
     assert run.notes == "Reused 2 stored article(s); 2 passed security screening."
+
+
+class RealTopic(Agent):
+    name = "topic"
+
+    def run(self, ctx):
+        return {"processed": len(ctx.approved_ids)}
+
+
+def test_each_stage_records_the_agent_that_ran_and_whether_it_was_a_stub(make_coordinator):
+    coordinator = make_coordinator(agents={TOPIC: RealTopic()})
+    stages = stages_by_name(coordinator, coordinator.run().id)
+
+    assert (stages[TOPIC].agent, stages[TOPIC].stub) == ("topic", False)
+    assert (stages[STANCE].agent, stages[STANCE].stub) == ("stance_stub", True)
+
+
+def test_a_stage_saved_by_its_fallback_records_the_fallback(make_coordinator):
+    coordinator = make_coordinator(agents={TOPIC: StubAgent("broken", fail_times=-1)},
+                                   fallbacks={TOPIC: RealTopic()})
+    topic = stages_by_name(coordinator, coordinator.run().id)[TOPIC]
+    assert (topic.status, topic.agent, topic.stub) == (StageStatus.SUCCEEDED, "topic", False)
 
 
 def test_missing_agent_is_caught_at_startup():

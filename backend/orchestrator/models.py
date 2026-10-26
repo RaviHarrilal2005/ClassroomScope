@@ -60,6 +60,10 @@ class StageRecord:
     error_detail: Optional[str] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    # The agent that ran it: the fallback's name if the fallback saved it.
+    # None on rows from before these columns existed.
+    agent: Optional[str] = None
+    stub: Optional[bool] = None
 
 
 def to_dict(record: Any) -> Dict[str, Any]:

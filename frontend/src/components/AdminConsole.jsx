@@ -13,10 +13,13 @@
  *   * Only one run may be active. A second POST returns 409 with the
  *     active run's id; the store switches to that run rather than just
  *     showing an error.
- *   * Some stages can be stubs (stance everywhere; sentiment where its
- *     libraries are missing). They succeed in about a millisecond without
- *     doing anything, which looks identical to real work from here —
- *     hence the note under the stage table.
+ *   * Some stages can be stubs (stance everywhere; topic or sentiment
+ *     where its model or libraries are missing). They succeed in about a
+ *     millisecond without doing anything, which looks identical to real
+ *     work from here. The coordinator records per stage which agent ran
+ *     and whether it was a stub (`agent`, `stub`), so the tag and the note
+ *     under the table say exactly which. Runs from before those columns
+ *     have `stub: null` and get no tag.
  *
  * TODO(auth): the whole panel should be admin-only once login (SS-5)
  * exists. The backend has the matching TODO on POST /runs.
@@ -29,15 +32,6 @@ import {
   formatDuration,
   formatTime,
 } from "./statusStyles";
-
-// Stages that are often stubs: stance has no implementation, and
-// sentiment is a stub wherever transformers or vaderSentiment is not
-// installed. Flagged so nobody reads "succeeded" as "analysed
-// something". Topic and aggregation are left out: they run for real
-// wherever the backend has its model and Supabase. Where they don't,
-// they are stubs this list can't see; the fix is for the backend to
-// report which agent ran.
-const STUBBED_STAGES = ["sentiment", "stance"];
 
 export default function AdminConsole() {
   const {
@@ -104,9 +98,7 @@ function RunDetail({ run }) {
     );
   }
 
-  const stubbedThatRan = run.stages.filter(
-    (s) => STUBBED_STAGES.includes(s.stage_name) && s.status === "succeeded"
-  );
+  const stubbedThatRan = run.stages.filter((s) => s.stub && s.status === "succeeded");
 
   return (
     <div className="card run-detail">
@@ -137,10 +129,10 @@ function RunDetail({ run }) {
               <tr key={stage.id}>
                 <td>
                   {stage.stage_name}
-                  {STUBBED_STAGES.includes(stage.stage_name) && (
+                  {stage.stub && (
                     <span
                       className="stub-tag"
-                      title="No agent implementation yet — this stage reports success without doing work"
+                      title={`${stage.agent} is a placeholder: it reports success without doing any work`}
                     >
                       stub
                     </span>
@@ -165,7 +157,8 @@ function RunDetail({ run }) {
       {stubbedThatRan.length > 0 && (
         <p className="stub-note">
           {stubbedThatRan.length} stage(s) marked <em>stub</em> reported success without
-          analysing anything — no agent is implemented for them yet.
+          analysing anything: the backend that ran them had no real agent for them, or
+          couldn&apos;t load its model or libraries.
         </p>
       )}
     </div>

@@ -436,6 +436,14 @@ which killed every run at the security stage.
 `supabase/migrations/20260924000153_align_stage_name_constraint.sql`
 fixes it and **has been applied**.
 
+`supabase/migrations/20261025000100_stage_agent.sql` adds two nullable
+columns, `agent` and `stub`: which agent ran each stage (the fallback's
+name if the fallback saved it) and whether it was a placeholder. The
+pipeline console's "stub" tag reads them. **It must be applied before
+the code that writes them is deployed**: until then, every stage update
+names a column the table doesn't have, and runs fail. Rows from earlier
+runs keep nulls and show no tag.
+
 `create_stage` works with either `attempt` default, since it omits the
 column and lets the database decide.
 

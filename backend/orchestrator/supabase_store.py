@@ -103,6 +103,8 @@ def stage_from_row(row: Dict[str, Any]) -> StageRecord:
         error_detail=row.get("error_detail"),
         started_at=parse_ts(row.get("started_at")),
         finished_at=parse_ts(row.get("finished_at")),
+        agent=row.get("agent"),
+        stub=row.get("stub"),
     )
 
 

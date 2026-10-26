@@ -237,7 +237,9 @@ class PipelineCoordinator:
         stage = record.stage_name
         policy = self.policies.get(stage, RetryPolicy())
         agent = self.registry.get(stage)
-        self.store.update_stage(record.id, status=StageStatus.RUNNING, started_at=utcnow())
+        # getattr: the contract only promises `name` and `run`, not the Agent base class.
+        self.store.update_stage(record.id, status=StageStatus.RUNNING, started_at=utcnow(),
+                                agent=agent.name, stub=getattr(agent, "stub", False))
 
         last_error = ""
         for attempt in range(1, policy.max_attempts + 1):
@@ -269,6 +271,7 @@ class PipelineCoordinator:
                 self._mark_stage(
                     record.id, StageStatus.SUCCEEDED,
                     f"Primary agent failed ({last_error}); fallback '{fallback.name}' was used.",
+                    agent=fallback.name, stub=getattr(fallback, "stub", False),
                 )
                 logger.info("Run %s: %s succeeded using fallback", ctx.run_id, stage)
                 return output
@@ -320,9 +323,9 @@ class PipelineCoordinator:
             raise RuntimeError(f"Run {run_id} disappeared from the store mid-run")
         return run
 
-    def _mark_stage(self, stage_id: int, status: str, error_detail: Optional[str] = None) -> None:
+    def _mark_stage(self, stage_id: int, status: str, error_detail: Optional[str] = None, **fields) -> None:
         self.store.update_stage(
-            stage_id, status=status, finished_at=utcnow(), error_detail=truncate(error_detail),
+            stage_id, status=status, finished_at=utcnow(), error_detail=truncate(error_detail), **fields,
         )
 
     def _finish(self, run_id: int, status: str, notes: Optional[str]) -> RunRecord:
