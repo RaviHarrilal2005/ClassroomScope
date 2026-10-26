@@ -62,6 +62,27 @@ def truncate(text: Optional[str]) -> Optional[str]:
     return text[: MAX_ERROR_LENGTH - 3] + "..."
 
 
+def nothing_collected(output: Output) -> str:
+    """
+    Why collection passed nothing on, from the counts CollectionAgent
+    reports. A stub reports none of them, hence the plain fallback.
+    """
+    if output.get("backlog"):
+        return "No stored articles are ready for analysis."
+    stored, fetched = output.get("stored"), output.get("fetched")
+    if stored:
+        relevant = output.get("llm_relevant") or 0
+        if relevant:
+            return (f"Stored {stored} new article(s); {relevant} were relevant, "
+                    "but none could be downloaded for analysis.")
+        return f"Stored {stored} new article(s); none were relevant."
+    if fetched:
+        return f"Fetched {fetched} article(s); all were already stored."
+    if fetched == 0:
+        return "No articles were fetched."
+    return "No new articles were collected."
+
+
 class PipelineCoordinator:
     def __init__(
         self,
@@ -141,7 +162,7 @@ class PipelineCoordinator:
         collected = len(ctx.article_ids)
         self.store.update_run(run_id, articles_collected=collected)
         if collected == 0:
-            return self._finish(run_id, RunStatus.COMPLETED, "No new articles were collected.")
+            return self._finish(run_id, RunStatus.COMPLETED, nothing_collected(output))
 
         # 2. Security (fail closed) ----------------------------------------
         output = self._run_stage(stages[SECURITY], ctx)

@@ -107,6 +107,23 @@ def test_no_new_articles_ends_run_early(make_coordinator):
     assert all(stages[s].status == StageStatus.SKIPPED for s in PIPELINE_ORDER[1:])
 
 
+@pytest.mark.parametrize("output, notes", [
+    ({"fetched": 12, "stored": 9, "llm_relevant": 0},
+     "Stored 9 new article(s); none were relevant."),
+    ({"fetched": 12, "stored": 9, "llm_relevant": 2},
+     "Stored 9 new article(s); 2 were relevant, but none could be downloaded for analysis."),
+    ({"fetched": 12, "stored": 0},
+     "Fetched 12 article(s); all were already stored."),
+    ({"fetched": 0, "stored": 0},
+     "No articles were fetched."),
+    ({"backlog": True, "fetched": 0, "stored": 0},
+     "No stored articles are ready for analysis."),
+])
+def test_an_empty_collection_says_why(make_coordinator, output, notes):
+    collection = StubAgent("c", output={"article_ids": [], **output})
+    assert make_coordinator(agents={COLLECTION: collection}).run().notes == notes
+
+
 def test_missing_agent_is_caught_at_startup():
     registry = AgentRegistry()
     registry.register(COLLECTION, stub_collection())
