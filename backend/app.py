@@ -16,9 +16,10 @@ STATUS:
 import logging
 import os
 from pathlib import Path
+from typing import Dict
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, abort, jsonify, make_response, request
 from flask_cors import CORS
 
 from agents.aggregation.compute import NO_SENTIMENT, sentiment_figures
@@ -84,12 +85,12 @@ def create_app(runner=None, read_corpus=None, search_comments=None):
         search_comments = search_comments or default_search
     app.register_blueprint(create_runs_blueprint(runner))
 
-    def filters_or_400():
-        """The request's filters, or a 400 response saying what is wrong with them."""
+    def filters_or_400() -> Dict[str, str]:
+        """The request's filters; a bad one ends the request with a 400 saying what is wrong."""
         try:
-            return corpus.parse_filters(request.args), None
+            return corpus.parse_filters(request.args)
         except ValueError as exc:
-            return None, (jsonify({"error": str(exc)}), 400)
+            abort(make_response(jsonify({"error": str(exc)}), 400))
 
     @app.get("/api/v1/health")
     def health():
@@ -108,10 +109,7 @@ def create_app(runner=None, read_corpus=None, search_comments=None):
 
         TODO: add auth check once Session/Auth Context (SS-5) is wired in
         """
-        filters, error = filters_or_400()
-        if error:
-            return error
-        assert filters is not None  # filters_or_400 returns one or the other
+        filters = filters_or_400()
         current = read_corpus()
         if not current["available"]:
             reason = current["reason"]
@@ -133,9 +131,7 @@ def create_app(runner=None, read_corpus=None, search_comments=None):
         `q` doesn't narrow the articles here: a comment can use a word its
         article never does.
         """
-        filters, error = filters_or_400()
-        if error:
-            return error
+        filters = filters_or_400()
         if not filters["q"]:
             return jsonify({"error": "'q' is required."}), 400
         current = read_corpus()

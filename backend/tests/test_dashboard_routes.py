@@ -83,6 +83,15 @@ def test_filters_that_match_nothing_give_empty_figures_with_the_reason():
     assert body["sentiment_reason"] == "No analysed articles match these filters."
 
 
+def test_comment_search_refuses_a_bad_date():
+    search = RecordingSearch()
+    client, _ = build_client(read_corpus=available, search_comments=search)
+    response = client.get("/api/v1/search/comments?q=tutors&to=soon")
+    assert response.status_code == 400
+    assert "'to' must be a date" in response.get_json()["error"]
+    assert search.calls == []
+
+
 def test_comment_search_needs_a_query():
     client, _ = build_client(read_corpus=available, search_comments=RecordingSearch())
     response = client.get("/api/v1/search/comments?stakeholder=students")
