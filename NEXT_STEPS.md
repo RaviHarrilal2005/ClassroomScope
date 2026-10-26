@@ -83,16 +83,17 @@ Results go in the `stance_results` table.
 ## 3. Aggregation: done, check it on a real run (Ravi)
 
 `/api/v1/results` now serves real sentiment figures for the filtered
-articles: the share (the donut), and the same broken down by month,
-topic and stakeholder (`agents/aggregation/compute.py`). The aggregation
-stage computes them on every run, so a broken table fails the stage.
-Nothing draws the three breakdowns yet; that, a sentiment column in the
-article table and a snapshot per run are listed at the end of
-[the plan](docs/superpowers/plans/2026-10-12-aggregation-mvp.md).
+articles: the share (the donut), the same broken down by month, topic
+and stakeholder, and the most negative stakeholder and topic
+(`agents/aggregation/compute.py`). The aggregation stage computes them
+on every run, so a broken table fails the stage. The dashboard draws
+the stakeholder and topic breakdowns under a headline, and the article
+table has a sentiment column. Still open: a chart of the monthly
+breakdown and a snapshot per run (README, "MVP features").
 
 To check it: a run shows aggregation `succeeded`, and
-`python -m pytest e2e -k "r1 or d1"` compares the API and the donut with
-`sentiment_results`.
+`python -m pytest e2e -k "r1 or d1"` compares the API, the donut and
+the headline with `sentiment_results`.
 
 ## 4. Dashboard fixes (Ravi)
 

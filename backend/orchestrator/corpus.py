@@ -39,7 +39,7 @@ FILTER_KEYS = ("from", "to", "source_type", "stakeholder", "topic", "q")
 EXACT_FILTERS = {"source_type": "source_type", "stakeholder": "stakeholder", "topic": "stable_topic_id"}
 # What /results sends per article. clean_content stays on the server.
 ARTICLE_FIELDS = ("id", "title", "url", "source", "published_date", "source_type",
-                  "stakeholder", "stable_topic_id", "topic", "snippet")
+                  "stakeholder", "stable_topic_id", "topic", "sentiment", "snippet")
 BASELINE_CLASSIFIER = "baseline_keyword"
 PREFERRED_SENTIMENT_METHOD = "roberta_news"
 SNIPPET_CONTEXT = 80

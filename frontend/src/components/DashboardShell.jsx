@@ -8,7 +8,8 @@
  *
  * STATUS: everything shown is real and filtered by the backend: top
  * topics, the article table and comment search (orchestrator/corpus.py),
- * and the sentiment share (agents/aggregation/compute.py).
+ * and the sentiment share, its breakdowns and the headline's picks
+ * (agents/aggregation/compute.py).
  *
  * NOT built yet: ExportControls, login. See design doc Section 2.
  */
@@ -18,7 +19,8 @@ import AdminConsole from "./AdminConsole";
 import ArticleTable from "./ArticleTable";
 import CommentResults from "./CommentResults";
 import FilterPanel from "./FilterPanel";
-import { SentimentDonut, TopTopicsBar } from "./VisualizationViews";
+import { humanize } from "./text";
+import { SentimentDonut, SentimentSplitBar, TopTopicsBar, percent } from "./VisualizationViews";
 
 const VIEWS = [
   { id: "dashboard", label: "Dashboard" },
@@ -80,6 +82,8 @@ function Dashboard() {
 
         {results && (
           <>
+            <Headline results={results} />
+
             <div className="chart-row">
               <section className="card">
                 <h2>Sentiment toward GAI in education</h2>
@@ -91,6 +95,20 @@ function Dashboard() {
                 <TopTopics facet={results.top_topics} />
               </section>
             </div>
+
+            {results.analysed > 0 && (
+              <>
+                <section className="card">
+                  <h2>Sentiment by stakeholder</h2>
+                  <ByStakeholder results={results} />
+                </section>
+
+                <section className="card">
+                  <h2>Sentiment by topic</h2>
+                  <ByTopic rows={results.sentiment_by_topic} />
+                </section>
+              </>
+            )}
 
             <section className="card">
               <h2>Articles</h2>
@@ -120,6 +138,71 @@ function TopTopics({ facet }) {
         topic yet.
       </p>
       <TopTopicsBar topics={facet.items} />
+    </>
+  );
+}
+
+/**
+ * Which group and topic the filtered news is most negative about. The
+ * backend picks them (agents/aggregation/compute.py) and sends null when
+ * there's nothing to compare, e.g. under a one-stakeholder filter.
+ */
+function Headline({ results }) {
+  const { most_negative_stakeholder: who, most_negative_topic: topic } = results;
+  if (!who && !topic) return null;
+  return (
+    <section className="card headline">
+      {who && (
+        <p>
+          News about <strong>{humanize(who.label).toLowerCase()}</strong> is the most negative:{" "}
+          {percent(who.negative / who.total)} of {who.total} articles, against{" "}
+          {percent(results.sentiment_distribution.negative)} overall.
+        </p>
+      )}
+      {topic && (
+        <p>
+          Of the topics, <strong>{topic.label}</strong> is the most negative:{" "}
+          {percent(topic.negative / topic.total)} of {topic.total}.
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Counts summed over breakdown rows, as a bold baseline row. */
+function baseline(label, rows) {
+  const sum = (field) => rows.reduce((n, r) => n + r[field], 0);
+  return { label, positive: sum("positive"), neutral: sum("neutral"), negative: sum("negative"),
+           total: sum("total"), baseline: true };
+}
+
+const byNegativeShare = (a, b) => b.negative / b.total - a.negative / a.total || b.total - a.total;
+
+/** Every analysed article is in the baseline; undetermined isn't a group, so it has no row of its own. */
+function ByStakeholder({ results }) {
+  const all = results.sentiment_by_stakeholder;
+  const groups = all.filter((r) => r.label !== "undetermined").sort(byNegativeShare);
+  const left = results.analysed - groups.reduce((n, r) => n + r.total, 0);
+  return (
+    <>
+      <p className="card-subtitle">
+        Share of each group's articles that are negative, neutral and positive, most negative first.
+        {left > 0 && ` ${left} article(s) with no clear stakeholder are in "All articles" only.`}
+      </p>
+      <SentimentSplitBar rows={[baseline("All articles", all), ...groups.map((r) => ({ ...r, label: humanize(r.label) }))]} />
+    </>
+  );
+}
+
+function ByTopic({ rows }) {
+  if (rows.length === 0) return <p className="empty-note">None of the matching articles has a topic yet.</p>;
+  const base = baseline("All with a topic", rows);
+  return (
+    <>
+      <p className="card-subtitle">
+        Only the {base.total} analysed article(s) with a topic are counted, most negative topic first.
+      </p>
+      <SentimentSplitBar rows={[base, ...[...rows].sort(byNegativeShare)]} />
     </>
   );
 }
