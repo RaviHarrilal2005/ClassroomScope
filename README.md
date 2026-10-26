@@ -162,7 +162,8 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | Sentiment charts | No hover tooltips; every share is printed as text instead | Nothing to discover by hovering | Add if a chart ever drops its printed values |
 | Redesign | Light theme only; badge colours inline in `StatusBadge` | Ignores an OS dark-mode preference | `prefers-color-scheme` token set, badge colours as tokens |
 | Redesign | Topic chart labels wrap to two lines at most | Labels over ~56 characters clip | Measure text, or wrap to N lines |
-| Pipeline runs | All 20 recent runs listed; Start a run has no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
+| Pipeline runs | All 20 recent runs listed; Start a run and Run on 5 stored articles have no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
+| Pipeline runs | Run on stored articles always takes the 5 oldest analysis-ready articles (`BACKLOG_RUN_SIZE`) | Re-analyses the same 5 every time; can't pick which or how many | Take a size, or specific article IDs, in the request |
 | Frontend | No frontend tests | Regressions caught by eye | Vitest + Testing Library |
 | End-to-end checks (`backend/e2e`) | Run against the team's shared Supabase project: 5 stored articles per run, real collection only with `--collect` | Every run writes to team data: run history, re-written classifications, sometimes new articles | A separate test database, selected with `E2E_ENV_FILE=.env.test` |
 | End-to-end checks (`backend/e2e`) | Dashboard checks find elements by their visible text and layout | A redesign that changes that text breaks D1–D3. The October redesign did, and they were rewritten for it | `data-testid` attributes on the elements the tests use |

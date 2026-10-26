@@ -24,7 +24,7 @@ from .stages import RunStatus, StageStatus
 # Fields the coordinator is allowed to update — keeps typos from silently
 # creating new attributes instead of updating real columns.
 RUN_FIELDS = {"status", "finished_at", "articles_collected", "notes"}
-STAGE_FIELDS = {"status", "attempt", "error_detail", "started_at", "finished_at"}
+STAGE_FIELDS = {"status", "attempt", "error_detail", "started_at", "finished_at", "agent", "stub"}
 
 
 class RunStore(ABC):

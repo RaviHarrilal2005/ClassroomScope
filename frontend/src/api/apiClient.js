@@ -96,16 +96,19 @@ export async function getRun(runId) {
  * Start a run. Returns immediately with the run at 'running' — the
  * pipeline continues on the server, so the caller polls getRun().
  *
+ * backlog: analyse a few already-stored articles instead of collecting
+ * new ones (orchestrator/routes.py, BACKLOG_RUN_SIZE).
+ *
  * Throws ApiError with status 409 when a run is already in progress;
  * err.body.active_run_id says which one.
  */
-export async function startRun(triggerType = "manual") {
+export async function startRun(triggerType = "manual", backlog = false) {
   // TODO(auth): admin-only once login (SS-5) exists — the backend has the
   // matching TODO on the endpoint.
   return request("/runs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ trigger_type: triggerType }),
+    body: JSON.stringify({ trigger_type: triggerType, backlog }),
   });
 }
 

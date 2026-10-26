@@ -43,6 +43,8 @@ class Agent(ABC):
     """Base class for pipeline agents. Real agents subclass this."""
 
     name: str = "agent"
+    # Recorded per stage, so the dashboard can say which stages did nothing real.
+    stub: bool = False
 
     @abstractmethod
     def run(self, ctx: RunContext) -> Output:
@@ -58,6 +60,8 @@ class StubAgent(Agent):
                 use -1 to fail on every call
     delay       seconds to sleep before responding (simulates real work)
     """
+
+    stub = True
 
     def __init__(
         self,

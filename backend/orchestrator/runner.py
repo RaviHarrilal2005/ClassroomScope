@@ -47,7 +47,7 @@ class BackgroundRunner:
         with self._lock:
             return self._active_run_id
 
-    def start(self, trigger_type: str = "manual") -> RunRecord:
+    def start(self, trigger_type: str = "manual", backlog_limit: Optional[int] = None) -> RunRecord:
         """Create a run and execute it in the background. Returns immediately."""
         with self._lock:
             if self._active_run_id is not None:
@@ -55,7 +55,7 @@ class BackgroundRunner:
             run = self.coordinator.start_run(trigger_type)
             self._active_run_id = run.id
             self._thread = threading.Thread(
-                target=self._execute, args=(run.id,),
+                target=self._execute, args=(run.id, backlog_limit),
                 name=f"pipeline-run-{run.id}", daemon=True,
             )
             self._thread.start()
@@ -69,9 +69,9 @@ class BackgroundRunner:
         thread.join(timeout)
         return not thread.is_alive()
 
-    def _execute(self, run_id: int) -> None:
+    def _execute(self, run_id: int, backlog_limit: Optional[int]) -> None:
         try:
-            self.coordinator.execute(run_id)
+            self.coordinator.execute(run_id, backlog_limit)
         except Exception:
             logger.exception("Run %s: background execution failed", run_id)
         finally:

@@ -150,11 +150,11 @@ export function ViewStateProvider({ children }) {
    * wanted anyway.
    */
   const triggerRun = useCallback(
-    async (triggerType = "manual") => {
+    async (triggerType = "manual", backlog = false) => {
       setStarting(true);
       setRunsError(null);
       try {
-        const run = await startRun(triggerType);
+        const run = await startRun(triggerType, backlog);
         setSelectedRun(run);
         setActiveRunId(run.id);
         watchedRunId.current = run.id;

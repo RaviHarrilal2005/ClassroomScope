@@ -117,6 +117,14 @@ def test_backlog_mode_respects_its_limit(fake_client):
     assert len(CollectionAgent(backlog=True, backlog_limit=4).run(RunContext(run_id=1))["article_ids"]) == 4
 
 
+def test_a_run_can_ask_for_backlog_mode_and_its_size(fake_client):
+    # The dashboard's "run on stored articles" button: the agent was built for normal runs.
+    fake_client(articles=[article(i) for i in range(1, 11)])
+    output = CollectionAgent().run(RunContext(run_id=1, backlog_limit=3))
+    assert output["backlog"] is True
+    assert output["article_ids"] == [1, 2, 3]
+
+
 def test_collection_reports_only_the_articles_analysis_can_use(monkeypatch, fake_client, llm_keys):
     """
     Stored 3, but one is irrelevant and one failed to download. Only the

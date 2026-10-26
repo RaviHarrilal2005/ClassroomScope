@@ -5,7 +5,7 @@ import pytest
 
 from helpers import stages_by_name
 from orchestrator import AgentRegistry, InMemoryRunStore, PipelineCoordinator
-from orchestrator.agents import Output, OutputSource, StubAgent, stub_collection
+from orchestrator.agents import Agent, Output, OutputSource, StubAgent, stub_collection
 from orchestrator.stages import (
     AGGREGATION,
     ANALYSIS_STAGES,
@@ -13,6 +13,8 @@ from orchestrator.stages import (
     PIPELINE_ORDER,
     SECURITY,
     SENTIMENT,
+    STANCE,
+    TOPIC,
     RunStatus,
     StageStatus,
 )
@@ -105,6 +107,59 @@ def test_no_new_articles_ends_run_early(make_coordinator):
     stages = stages_by_name(coordinator, run.id)
     assert stages[COLLECTION].status == StageStatus.SUCCEEDED
     assert all(stages[s].status == StageStatus.SKIPPED for s in PIPELINE_ORDER[1:])
+
+
+@pytest.mark.parametrize("output, notes", [
+    ({"fetched": 12, "stored": 9, "llm_relevant": 0},
+     "Stored 9 new article(s); none were relevant."),
+    ({"fetched": 12, "stored": 9, "llm_relevant": 2},
+     "Stored 9 new article(s); 2 were relevant, but none could be downloaded for analysis."),
+    ({"fetched": 12, "stored": 0},
+     "Fetched 12 article(s); all were already stored."),
+    ({"fetched": 0, "stored": 0},
+     "No articles were fetched."),
+    ({"backlog": True, "fetched": 0, "stored": 0},
+     "No stored articles are ready for analysis."),
+])
+def test_an_empty_collection_says_why(make_coordinator, output, notes):
+    collection = StubAgent("c", output={"article_ids": [], **output})
+    assert make_coordinator(agents={COLLECTION: collection}).run().notes == notes
+
+
+def test_a_backlog_run_passes_its_size_on_and_says_it_reused_articles(make_coordinator):
+    seen = {}
+
+    def collect(ctx):
+        seen["backlog_limit"] = ctx.backlog_limit
+        return {"article_ids": [1, 2], "backlog": True}
+
+    coordinator = make_coordinator(agents={COLLECTION: StubAgent("c", output=collect)})
+    run = coordinator.execute(coordinator.start_run().id, backlog_limit=5)
+
+    assert seen == {"backlog_limit": 5}
+    assert run.notes == "Reused 2 stored article(s); 2 passed security screening."
+
+
+class RealTopic(Agent):
+    name = "topic"
+
+    def run(self, ctx):
+        return {"processed": len(ctx.approved_ids)}
+
+
+def test_each_stage_records_the_agent_that_ran_and_whether_it_was_a_stub(make_coordinator):
+    coordinator = make_coordinator(agents={TOPIC: RealTopic()})
+    stages = stages_by_name(coordinator, coordinator.run().id)
+
+    assert (stages[TOPIC].agent, stages[TOPIC].stub) == ("topic", False)
+    assert (stages[STANCE].agent, stages[STANCE].stub) == ("stance_stub", True)
+
+
+def test_a_stage_saved_by_its_fallback_records_the_fallback(make_coordinator):
+    coordinator = make_coordinator(agents={TOPIC: StubAgent("broken", fail_times=-1)},
+                                   fallbacks={TOPIC: RealTopic()})
+    topic = stages_by_name(coordinator, coordinator.run().id)[TOPIC]
+    assert (topic.status, topic.agent, topic.stub) == (StageStatus.SUCCEEDED, "topic", False)
 
 
 def test_missing_agent_is_caught_at_startup():

@@ -46,9 +46,10 @@ Two words you'll see on the dashboard:
   run always starts by fetching new news. If none of it is about AI in
   education, there's nothing to analyse, so every stage after
   collection is skipped. That's what happened on run #12 (Oct 4): it
-  found 9 new articles and none were relevant. To test the analysis
-  stages anyway, use the `--backlog` command above, which reuses
-  articles we already have.
+  found 9 new articles and none were relevant; the run's note now says
+  so. To test the analysis stages anyway, click **Run on 5 stored
+  articles**, or use the `--backlog` command above. Both reuse articles
+  we already have and fetch nothing.
 
 ## Where each stage stands
 
@@ -99,18 +100,6 @@ the headline with `sentiment_results`.
 
 Smaller things we found while testing:
 
-- The "stub" tag next to each stage comes from a fixed list in
-  `frontend/src/components/AdminConsole.jsx`. Topic is off the list now
-  that its model is in the repo, but on a computer without the model,
-  topic is a stub the dashboard won't tag. The backend should report
-  which agent actually ran each stage, and the dashboard should show
-  that.
-- When collection finds new articles but none are relevant, the run
-  says "No new articles were collected." It should say something like
-  "9 new articles, none relevant."
-- The dashboard can't start a backlog run, so testing the analysis
-  stages needs the terminal. A "run on stored articles" button would
-  fix that.
 - The filter panel and keyword search exist as MVPs (README, "MVP
   features — come back to these"). The sentiment figures follow the
   filters because they are computed per request; a snapshot table, if

@@ -2,6 +2,8 @@
 API endpoints for pipeline runs.
 
   POST /api/v1/runs            start a run          -> 202 + run (409 if one is active)
+                               {"backlog": true} analyses a few stored articles
+                               instead of collecting new ones
   GET  /api/v1/runs            recent runs, newest first (?limit=N, max 100)
   GET  /api/v1/runs/<run_id>   one run with its stage-by-stage status
 
@@ -15,6 +17,11 @@ from flask import Blueprint, jsonify, request
 from .models import to_dict
 from .runner import BackgroundRunner, RunAlreadyActive
 from .stages import TRIGGER_TYPES
+
+# ponytail: fixed, as for `run_pipeline.py --backlog --limit 5`. Enough to
+# exercise every stage in under a minute; take it from the body if a
+# bigger re-analysis from the dashboard is ever wanted.
+BACKLOG_RUN_SIZE = 5
 
 
 def create_runs_blueprint(runner: BackgroundRunner) -> Blueprint:
@@ -33,8 +40,11 @@ def create_runs_blueprint(runner: BackgroundRunner) -> Blueprint:
         trigger_type = body.get("trigger_type", "manual")
         if trigger_type not in TRIGGER_TYPES:
             return jsonify({"error": f"trigger_type must be one of {list(TRIGGER_TYPES)}"}), 400
+        backlog = body.get("backlog", False)
+        if not isinstance(backlog, bool):
+            return jsonify({"error": "backlog must be true or false"}), 400
         try:
-            run = runner.start(trigger_type)
+            run = runner.start(trigger_type, BACKLOG_RUN_SIZE if backlog else None)
         except RunAlreadyActive as exc:
             return jsonify({
                 "error": "A pipeline run is already in progress.",

@@ -62,6 +62,27 @@ def truncate(text: Optional[str]) -> Optional[str]:
     return text[: MAX_ERROR_LENGTH - 3] + "..."
 
 
+def nothing_collected(output: Output) -> str:
+    """
+    Why collection passed nothing on, from the counts CollectionAgent
+    reports. A stub reports none of them, hence the plain fallback.
+    """
+    if output.get("backlog"):
+        return "No stored articles are ready for analysis."
+    stored, fetched = output.get("stored"), output.get("fetched")
+    if stored:
+        relevant = output.get("llm_relevant") or 0
+        if relevant:
+            return (f"Stored {stored} new article(s); {relevant} were relevant, "
+                    "but none could be downloaded for analysis.")
+        return f"Stored {stored} new article(s); none were relevant."
+    if fetched:
+        return f"Fetched {fetched} article(s); all were already stored."
+    if fetched == 0:
+        return "No articles were fetched."
+    return "No new articles were collected."
+
+
 class PipelineCoordinator:
     def __init__(
         self,
@@ -101,8 +122,13 @@ class PipelineCoordinator:
         logger.info("Run %s created (%s)", run.id, trigger_type)
         return run
 
-    def execute(self, run_id: int) -> RunRecord:
-        """Run every stage for an existing run. Returns the final run record."""
+    def execute(self, run_id: int, backlog_limit: Optional[int] = None) -> RunRecord:
+        """
+        Run every stage for an existing run. Returns the final run record.
+
+        backlog_limit makes it a run over up to that many stored articles
+        rather than newly collected ones (see RunContext).
+        """
         run = self.store.get_run(run_id)
         if run is None:
             raise ValueError(f"Run {run_id} does not exist")
@@ -110,7 +136,7 @@ class PipelineCoordinator:
             raise ValueError(f"Run {run_id} already finished with status '{run.status}'")
 
         try:
-            return self._execute(run_id)
+            return self._execute(run_id, backlog_limit)
         except Exception as exc:
             # A bug in the coordinator or a storage failure. Record it so
             # the run doesn't sit at 'running' forever.
@@ -125,9 +151,9 @@ class PipelineCoordinator:
     # ------------------------------------------------------------------
     # Sequencing
     # ------------------------------------------------------------------
-    def _execute(self, run_id: int) -> RunRecord:
+    def _execute(self, run_id: int, backlog_limit: Optional[int]) -> RunRecord:
         stages = {s.stage_name: s for s in self.store.list_stages(run_id)}
-        ctx = RunContext(run_id=run_id)
+        ctx = RunContext(run_id=run_id, backlog_limit=backlog_limit)
         logger.info("Run %s started", run_id)
 
         # 1. Collection ---------------------------------------------------
@@ -141,7 +167,7 @@ class PipelineCoordinator:
         collected = len(ctx.article_ids)
         self.store.update_run(run_id, articles_collected=collected)
         if collected == 0:
-            return self._finish(run_id, RunStatus.COMPLETED, "No new articles were collected.")
+            return self._finish(run_id, RunStatus.COMPLETED, nothing_collected(output))
 
         # 2. Security (fail closed) ----------------------------------------
         output = self._run_stage(stages[SECURITY], ctx)
@@ -153,7 +179,9 @@ class PipelineCoordinator:
             )
         ctx.approved_ids = list(dict.fromkeys(output["approved_ids"]))
         approved = len(ctx.approved_ids)
-        summary = f"Collected {collected} article(s); {approved} passed security screening."
+        source = "Reused" if backlog_limit else "Collected"
+        stored = " stored" if backlog_limit else ""
+        summary = f"{source} {collected}{stored} article(s); {approved} passed security screening."
         if approved == 0:
             return self._finish(
                 run_id, RunStatus.COMPLETED,
@@ -209,7 +237,9 @@ class PipelineCoordinator:
         stage = record.stage_name
         policy = self.policies.get(stage, RetryPolicy())
         agent = self.registry.get(stage)
-        self.store.update_stage(record.id, status=StageStatus.RUNNING, started_at=utcnow())
+        # getattr: the contract only promises `name` and `run`, not the Agent base class.
+        self.store.update_stage(record.id, status=StageStatus.RUNNING, started_at=utcnow(),
+                                agent=agent.name, stub=getattr(agent, "stub", False))
 
         last_error = ""
         for attempt in range(1, policy.max_attempts + 1):
@@ -241,6 +271,7 @@ class PipelineCoordinator:
                 self._mark_stage(
                     record.id, StageStatus.SUCCEEDED,
                     f"Primary agent failed ({last_error}); fallback '{fallback.name}' was used.",
+                    agent=fallback.name, stub=getattr(fallback, "stub", False),
                 )
                 logger.info("Run %s: %s succeeded using fallback", ctx.run_id, stage)
                 return output
@@ -273,6 +304,7 @@ class PipelineCoordinator:
             article_ids=list(ctx.article_ids),
             approved_ids=list(ctx.approved_ids),
             completed_analysis=list(ctx.completed_analysis),
+            backlog_limit=ctx.backlog_limit,
         )
 
     # ------------------------------------------------------------------
@@ -291,9 +323,9 @@ class PipelineCoordinator:
             raise RuntimeError(f"Run {run_id} disappeared from the store mid-run")
         return run
 
-    def _mark_stage(self, stage_id: int, status: str, error_detail: Optional[str] = None) -> None:
+    def _mark_stage(self, stage_id: int, status: str, error_detail: Optional[str] = None, **fields) -> None:
         self.store.update_stage(
-            stage_id, status=status, finished_at=utcnow(), error_detail=truncate(error_detail),
+            stage_id, status=status, finished_at=utcnow(), error_detail=truncate(error_detail), **fields,
         )
 
     def _finish(self, run_id: int, status: str, notes: Optional[str]) -> RunRecord:
