@@ -122,8 +122,13 @@ class PipelineCoordinator:
         logger.info("Run %s created (%s)", run.id, trigger_type)
         return run
 
-    def execute(self, run_id: int) -> RunRecord:
-        """Run every stage for an existing run. Returns the final run record."""
+    def execute(self, run_id: int, backlog_limit: Optional[int] = None) -> RunRecord:
+        """
+        Run every stage for an existing run. Returns the final run record.
+
+        backlog_limit makes it a run over up to that many stored articles
+        rather than newly collected ones (see RunContext).
+        """
         run = self.store.get_run(run_id)
         if run is None:
             raise ValueError(f"Run {run_id} does not exist")
@@ -131,7 +136,7 @@ class PipelineCoordinator:
             raise ValueError(f"Run {run_id} already finished with status '{run.status}'")
 
         try:
-            return self._execute(run_id)
+            return self._execute(run_id, backlog_limit)
         except Exception as exc:
             # A bug in the coordinator or a storage failure. Record it so
             # the run doesn't sit at 'running' forever.
@@ -146,9 +151,9 @@ class PipelineCoordinator:
     # ------------------------------------------------------------------
     # Sequencing
     # ------------------------------------------------------------------
-    def _execute(self, run_id: int) -> RunRecord:
+    def _execute(self, run_id: int, backlog_limit: Optional[int]) -> RunRecord:
         stages = {s.stage_name: s for s in self.store.list_stages(run_id)}
-        ctx = RunContext(run_id=run_id)
+        ctx = RunContext(run_id=run_id, backlog_limit=backlog_limit)
         logger.info("Run %s started", run_id)
 
         # 1. Collection ---------------------------------------------------
@@ -174,7 +179,9 @@ class PipelineCoordinator:
             )
         ctx.approved_ids = list(dict.fromkeys(output["approved_ids"]))
         approved = len(ctx.approved_ids)
-        summary = f"Collected {collected} article(s); {approved} passed security screening."
+        source = "Reused" if backlog_limit else "Collected"
+        stored = " stored" if backlog_limit else ""
+        summary = f"{source} {collected}{stored} article(s); {approved} passed security screening."
         if approved == 0:
             return self._finish(
                 run_id, RunStatus.COMPLETED,
@@ -294,6 +301,7 @@ class PipelineCoordinator:
             article_ids=list(ctx.article_ids),
             approved_ids=list(ctx.approved_ids),
             completed_analysis=list(ctx.completed_analysis),
+            backlog_limit=ctx.backlog_limit,
         )
 
     # ------------------------------------------------------------------

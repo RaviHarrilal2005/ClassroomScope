@@ -65,6 +65,19 @@ export default function AdminConsole() {
         <button type="button" onClick={() => triggerRun("manual")} disabled={starting || isActive}>
           {starting ? "Starting…" : isActive ? "Run in progress…" : "Start a run"}
         </button>
+        {/* Tests the analysis stages without waiting for news: no fetching, no
+            API quota. 5 is BACKLOG_RUN_SIZE in orchestrator/routes.py. The label
+            never changes, so "Start a run" stays the only button saying a run is
+            starting or in progress. */}
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => triggerRun("manual", true)}
+          disabled={starting || isActive}
+          title="Analyses the 5 oldest stored articles again; nothing new is fetched"
+        >
+          Run on 5 stored articles
+        </button>
         {isActive && <span className="muted">Only one run may be active at a time.</span>}
       </div>
 

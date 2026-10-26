@@ -124,11 +124,14 @@ article whose page could not be downloaded has no `clean_content`, and
 every analysis agent reads `clean_content`, so passing its ID on would
 just produce four failures further down.
 
-A run where every article was already stored collects nothing and
-finishes early with "No new articles were collected". That is correct,
-not a fault — but it means you cannot exercise the rest of the pipeline
-that way once the corpus is current. `--backlog` (below) exists for
-that.
+A run that passes nothing on finishes early, and its note says why,
+from the counts collection reports: "Fetched 12 article(s); all were
+already stored", "Stored 9 new article(s); none were relevant", and so
+on. That is correct, not a fault — but it means you cannot exercise the
+rest of the pipeline that way once the corpus is current. `--backlog`
+(below) exists for that, and so does `POST /api/v1/runs` with
+`{"backlog": true}` (the dashboard's **Run on 5 stored articles**),
+which sets `RunContext.backlog_limit` to 5 for that one run.
 
 ### Security
 
@@ -504,7 +507,10 @@ fails if the deployed schema and the code drift apart.
 - **No auth on `POST /api/v1/runs`.** Should be admin-only once login (SS-5) exists.
 - **Nothing schedules runs yet.** The `scheduled` trigger type is ready,
   but no scheduler calls it.
-- **The dashboard doesn't poll run status yet.** The endpoint it needs exists.
+- **A backlog run looks like a normal one in `pipeline_runs`.** Its
+  `trigger_type` is still `manual` (the column's check allows only
+  `manual` and `scheduled`); only its note ("Reused 5 stored
+  article(s)...") tells them apart.
 
 ## Open questions for the team
 

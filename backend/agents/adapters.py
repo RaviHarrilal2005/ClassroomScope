@@ -110,8 +110,10 @@ class CollectionAgent(Agent):
         self.backlog_limit = backlog_limit
 
     def run(self, ctx: RunContext) -> Dict[str, Any]:
-        if self.backlog:
-            return self._from_backlog()
+        # A run can ask for backlog mode itself (the dashboard's "run on
+        # stored articles"), with its own size.
+        if self.backlog or ctx.backlog_limit:
+            return self._from_backlog(ctx.backlog_limit or self.backlog_limit)
 
         from .collection import db, fetchers, filter_relevance, llm_verify_relevance, preprocess
 
@@ -169,7 +171,7 @@ class CollectionAgent(Agent):
             rows.extend(result.data or [])
         return sorted(r["id"] for r in rows)
 
-    def _from_backlog(self) -> Dict[str, Any]:
+    def _from_backlog(self, limit: int) -> Dict[str, Any]:
         result = (
             get_client()
             .table("articles")
@@ -177,7 +179,7 @@ class CollectionAgent(Agent):
             .eq("llm_relevant", True)
             .eq("processing_status", "success")
             .order("id")
-            .limit(self.backlog_limit)
+            .limit(limit)
             .execute()
         )
         ids = sorted(r["id"] for r in (result.data or []))

@@ -124,6 +124,20 @@ def test_an_empty_collection_says_why(make_coordinator, output, notes):
     assert make_coordinator(agents={COLLECTION: collection}).run().notes == notes
 
 
+def test_a_backlog_run_passes_its_size_on_and_says_it_reused_articles(make_coordinator):
+    seen = {}
+
+    def collect(ctx):
+        seen["backlog_limit"] = ctx.backlog_limit
+        return {"article_ids": [1, 2], "backlog": True}
+
+    coordinator = make_coordinator(agents={COLLECTION: StubAgent("c", output=collect)})
+    run = coordinator.execute(coordinator.start_run().id, backlog_limit=5)
+
+    assert seen == {"backlog_limit": 5}
+    assert run.notes == "Reused 2 stored article(s); 2 passed security screening."
+
+
 def test_missing_agent_is_caught_at_startup():
     registry = AgentRegistry()
     registry.register(COLLECTION, stub_collection())

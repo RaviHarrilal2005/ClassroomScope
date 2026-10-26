@@ -30,6 +30,9 @@ class RunContext:
     article_ids: List[int] = field(default_factory=list)          # set after collection
     approved_ids: List[int] = field(default_factory=list)         # set after security
     completed_analysis: List[str] = field(default_factory=list)   # set before aggregation
+    # Set for a run over stored articles: collection fetches nothing and
+    # passes on up to this many analysis-ready ones instead.
+    backlog_limit: Optional[int] = None
 
 
 @dataclass

@@ -4,6 +4,7 @@ import threading
 from helpers import build_client
 from orchestrator import build_default_registry
 from orchestrator.agents import StubAgent
+from orchestrator.routes import BACKLOG_RUN_SIZE
 from orchestrator.stages import COLLECTION, PIPELINE_ORDER, RunStatus, StageStatus
 
 
@@ -43,6 +44,25 @@ def test_only_one_run_at_a_time():
     assert runner.wait(timeout=5)
     assert client.post("/api/v1/runs").status_code == 202   # allowed once the first finishes
     assert runner.wait(timeout=5)
+
+
+def test_a_backlog_run_reuses_a_few_stored_articles():
+    seen = []
+    registry = build_default_registry(live=False)
+    registry.register(COLLECTION, StubAgent("c", output=lambda ctx: seen.append(ctx.backlog_limit) or
+                                            {"article_ids": [1], "backlog": True}))
+    client, runner = build_client(registry)
+
+    assert client.post("/api/v1/runs", json={"backlog": True}).status_code == 202
+    assert runner.wait(timeout=5)
+    assert client.post("/api/v1/runs").status_code == 202   # a plain run stays a normal one
+    assert runner.wait(timeout=5)
+    assert seen == [BACKLOG_RUN_SIZE, None]
+
+
+def test_backlog_must_be_true_or_false():
+    client, _ = build_client()
+    assert client.post("/api/v1/runs", json={"backlog": "yes"}).status_code == 400
 
 
 def test_invalid_trigger_type_is_rejected():
