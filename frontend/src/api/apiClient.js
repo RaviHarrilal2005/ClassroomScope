@@ -112,4 +112,4 @@ export async function startRun(triggerType = "manual", backlog = false) {
   });
 }
 
-// TODO: exportResults(format) — CSV / PDF export
+// CSV export is built in the browser from getResults()' articles (src/csv.js), so it needs no endpoint.

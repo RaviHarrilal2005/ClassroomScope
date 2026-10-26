@@ -7,6 +7,7 @@
  * MVP (README, "MVP features — come back to these"): every match is
  * rendered, with no paging. Fine at a few hundred rows.
  */
+import { articlesCsv, download, exportFileName } from "../csv";
 import { useViewState } from "../state/ViewStateContext";
 import { Highlight, formatDate, humanize } from "./text";
 
@@ -18,9 +19,22 @@ export default function ArticleTable() {
 
   return (
     <>
-      <p className="table-meta">
-        Showing {articles.total} of {articles.corpus} articles
-      </p>
+      <div className="table-meta">
+        <p>
+          Showing {articles.total} of {articles.corpus} articles
+        </p>
+        {/* Exactly the rows below: built from what the page already has (src/csv.js). */}
+        <button
+          type="button"
+          className="secondary"
+          disabled={articles.items.length === 0}
+          onClick={() =>
+            download(articlesCsv(articles.items, { withSnippet: Boolean(filters.q) }), exportFileName(filters))
+          }
+        >
+          Export CSV
+        </button>
+      </div>
       {articles.items.length === 0 ? (
         <p className="empty-note">No articles match these filters.</p>
       ) : (
