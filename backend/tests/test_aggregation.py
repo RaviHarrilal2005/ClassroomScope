@@ -58,3 +58,36 @@ def test_no_analysed_articles_gives_zeros_and_the_reason_not_an_error():
     assert result["sentiment_over_time"] == result["sentiment_by_topic"] == result["sentiment_by_stakeholder"] == []
     assert result["sentiment_reason"] == "No articles match these filters."
     assert sentiment_figures([])["sentiment_reason"] == NO_SENTIMENT
+
+
+# --- the headline: which group and topic the news is most negative about ---
+
+def group(label, negative, total, field="stakeholder", start=0):
+    """`total` articles about `label`, the first `negative` of them negative."""
+    return [art(start + i, "negative" if i < negative else "neutral", **{field: label}) for i in range(total)]
+
+
+def test_most_negative_is_the_highest_negative_share_among_groups_with_enough_articles():
+    arts = (group("students", 6, 20) + group("educators", 2, 20, start=100)
+            + group("parents", 5, 5, start=200))  # 100% negative, but too few to name
+    assert sentiment_figures(arts)["most_negative_stakeholder"]["label"] == "students"
+
+
+def test_most_negative_works_for_topics_too():
+    arts = group("Integrity", 1, 20, field="topic") + group("Policy", 9, 20, field="topic", start=100)
+    assert sentiment_figures(arts)["most_negative_topic"]["label"] == "Policy"
+
+
+def test_no_most_negative_with_fewer_than_two_groups_to_compare():
+    arts = group("students", 6, 20) + group("parents", 5, 5, start=100)
+    assert sentiment_figures(arts)["most_negative_stakeholder"] is None
+
+
+def test_undetermined_is_never_named_most_negative():
+    arts = group(None, 20, 20) + group("students", 1, 20, start=100) + group("educators", 0, 20, start=200)
+    assert sentiment_figures(arts)["most_negative_stakeholder"]["label"] == "students"
+
+
+def test_no_most_negative_when_nothing_is_negative():
+    arts = group("students", 0, 20) + group("educators", 0, 20, start=100)
+    assert sentiment_figures(arts)["most_negative_stakeholder"] is None

@@ -247,6 +247,12 @@ def test_articles_go_out_without_their_text():
     assert set(item) == set(corpus.ARTICLE_FIELDS)
 
 
+def test_articles_go_out_with_their_sentiment():
+    rows = [corpus_row(1, sentiment="negative")]
+    item = corpus.results_payload({"available": True, "reason": None, "articles": rows}, NO_FILTERS)["articles"]["items"][0]
+    assert item["sentiment"] == "negative"
+
+
 def test_filter_options_come_from_the_whole_corpus():
     rows = [corpus_row(1, source_type="blog", stakeholder="students", stable_topic_id="T004", topic="Integrity",
                        published_date="2026-02-01T00:00:00+00:00"),
