@@ -2,12 +2,14 @@
  * Visualization Views — the dashboard's charts (Section 2 of design doc).
  *
  * Each chart takes plain data rather than the /results payload, so the
- * caller decides what to draw: the sentiment shares are still the stub's,
- * while the topics are real counts from `top_topics.items`, the same
- * shape the aggregation snapshot will use.
+ * caller decides what to draw.
  *
  * Every value is printed on the chart as text, so colour is never the
  * only signal — the same rule statusStyles.js follows for badges.
+ *
+ * Sentiment is blue / light grey / red, not green / grey / red: red and
+ * green are about ΔE 5 apart for a deuteranope, blue and red about 20.
+ * Neutral is light so the 70%-neutral bars show their lean, not a grey wall.
  *
  * accessibilityLayer is off because these charts have no tooltip to
  * navigate. Recharts' default would make each one a tab stop that does
@@ -15,13 +17,20 @@
  * of the reading mode it needs to hear the labels that carry the values.
  */
 import { Bar, BarChart, LabelList, Pie, PieChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
-import { BLUE, GREEN, GREY, RED } from "./statusStyles";
+import { BLUE, GREY, RED } from "./statusStyles";
 
 const SENTIMENTS = [
-  { field: "positive", name: "Positive", fill: GREEN.fg },
-  { field: "neutral", name: "Neutral", fill: GREY.fg },
-  { field: "negative", name: "Negative", fill: RED.fg },
+  { field: "positive", name: "Positive", fill: "#2A6BB0", ink: "#fff" },
+  { field: "neutral", name: "Neutral", fill: GREY.border, ink: "var(--text)" },
+  { field: "negative", name: "Negative", fill: RED.fg, ink: "#fff" },
 ];
+
+// Mirrors MIN_ARTICLES_TO_NAME in agents/aggregation/compute.py: rows
+// smaller than this are faded, as the headline never names them.
+export const MIN_ARTICLES_TO_NAME = 20;
+
+/** A 0–1 share as a whole percentage, rounded the way the donut rounds it. */
+export const percent = (share) => `${(share * 100).toFixed(0)}%`;
 
 /**
  * Positive / neutral / negative shares (0–1) as a donut, each slice labelled.
@@ -49,7 +58,13 @@ export function SentimentDonut({ distribution }) {
             // The API's own share, not Recharts' `percent`: that one is
             // re-normalised over the slices drawn, so it would disagree
             // with the API whenever the three shares don't sum to 1.
-            label={({ name, value }) => `${name} ${(value * 100).toFixed(0)}%`}
+            // Text ink, not the slice's colour: light-grey neutral text would be unreadable.
+            label={({ x, y, textAnchor, name, value }) => (
+              <text x={x} y={y} textAnchor={textAnchor} dominantBaseline="central"
+                    className="recharts-text recharts-pie-label-text" fill="var(--text)">
+                {`${name} ${percent(value)}`}
+              </text>
+            )}
           />
         </PieChart>
       </ResponsiveContainer>
@@ -91,6 +106,58 @@ export function TopTopicsBar({ topics }) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+const SPLIT_ORDER = ["negative", "neutral", "positive"].map((f) => SENTIMENTS.find((s) => s.field === f));
+
+/**
+ * [{ label, positive, neutral, negative, total, baseline? }] (counts) as
+ * one 100% bar per row: negative, neutral, positive.
+ *
+ * Plain HTML, not Recharts: Recharts gives the labels fixed-width axes,
+ * which leave no room for the bars on a phone. Here each row's label and
+ * shares sit on a line above its bar and wrap. A segment under 8% is too
+ * thin for its label; the line above still gives its share. The bar is
+ * hidden from screen readers, as that line carries the numbers.
+ */
+export function SentimentSplitBar({ rows }) {
+  return (
+    <div className="chart">
+      {rows.map((r) => {
+        const share = (field) => r[field] / r.total;
+        const faded = !r.baseline && r.total < MIN_ARTICLES_TO_NAME;
+        return (
+          <div key={r.label} className={`split-row${r.baseline ? " is-baseline" : ""}${faded ? " is-faded" : ""}`}>
+            <p className="split-head">
+              <span>
+                {r.label} <span className="muted">({r.total})</span>
+              </span>
+              <span className="muted">
+                {percent(share("negative"))} negative · {percent(share("positive"))} positive
+              </span>
+            </p>
+            <div className="split-bar" aria-hidden="true">
+              {SPLIT_ORDER.map(({ field, fill, ink }) =>
+                r[field] > 0 && (
+                  <span key={field} style={{ flexGrow: share(field), background: fill, color: ink }}>
+                    {share(field) >= 0.08 && percent(share(field))}
+                  </span>
+                )
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <p className="chart-legend">
+        {SPLIT_ORDER.map(({ field, name, fill }) => (
+          <span key={field}>
+            <span className="swatch" style={{ background: fill }} aria-hidden="true" /> {name}
+          </span>
+        ))}
+        <span className="muted">Faded: fewer than {MIN_ARTICLES_TO_NAME} articles</span>
+      </p>
     </div>
   );
 }

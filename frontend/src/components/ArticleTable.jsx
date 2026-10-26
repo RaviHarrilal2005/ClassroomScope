@@ -1,8 +1,8 @@
 /**
  * The analysable articles that match the filters, newest first.
  *
- * No sentiment column: there is no real per-article sentiment in
- * /results yet, and a made-up value per row would read as data.
+ * Sentiment is the corpus's one result per article (RoBERTa's first); an
+ * em dash where none exists yet.
  *
  * MVP (README, "MVP features — come back to these"): every match is
  * rendered, with no paging. Fine at a few hundred rows.
@@ -34,6 +34,7 @@ export default function ArticleTable() {
                 <th scope="col">Source type</th>
                 <th scope="col">Stakeholder</th>
                 <th scope="col">Topic</th>
+                <th scope="col">Sentiment</th>
               </tr>
             </thead>
             <tbody>
@@ -61,6 +62,7 @@ export default function ArticleTable() {
                     <td>{humanize(a.source_type)}</td>
                     <td>{humanize(a.stakeholder)}</td>
                     <td>{a.topic || "—"}</td>
+                    <td>{humanize(a.sentiment)}</td>
                   </tr>
                 );
               })}

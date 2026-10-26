@@ -157,6 +157,9 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | Search | `*` acts as a wildcard (PostgREST has no escape for it) | `a*b` matches more than it says | Search through an RPC function |
 | Search | Comment search capped at the newest 50, no paging; article IDs sent in the URL | Can't browse all matches; breaks past ~1,500 articles | Paging, and an RPC taking the filters |
 | Aggregation | Sentiment figures recomputed from the cached corpus on every request; the pipeline stage checks they can be computed and stores nothing (`agents/aggregation/`) | No record of the figures per run, so runs can't be compared over time | A snapshot row per run |
+| Sentiment charts | Headline names a group or topic only at 20+ articles, a fixed cutoff (`MIN_ARTICLES_TO_NAME`, in `compute.py` and `VisualizationViews.jsx`) | Not a significance test: at 20 one article still moves a share 5 points | A confidence interval per share, named only when it clears the overall figure |
+| Sentiment charts | No chart of `sentiment_over_time`, though the API sends it | Can't see when coverage turned; today 184 of 323 articles are from Sept 2026, so it would be one spike | Draw it once months are filled more evenly |
+| Sentiment charts | No hover tooltips; every share is printed as text instead | Nothing to discover by hovering | Add if a chart ever drops its printed values |
 | Redesign | Light theme only; badge colours inline in `StatusBadge` | Ignores an OS dark-mode preference | `prefers-color-scheme` token set, badge colours as tokens |
 | Redesign | Topic chart labels wrap to two lines at most | Labels over ~56 characters clip | Measure text, or wrap to N lines |
 | Pipeline runs | All 20 recent runs listed; Start a run has no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
@@ -187,9 +190,14 @@ ExportControls):
    source type, stakeholder, topic and keyword search, with filter
    state in `ViewStateContext.jsx`.
 2. **VisualizationViews** — built (`VisualizationViews.jsx`, using
-   Recharts): a sentiment donut and a top-topics bar chart. New chart
-   types should use Recharts too. The article list stays a table: a
-   chart of a handful of rows would present a sample as a distribution.
+   Recharts): a sentiment donut, a top-topics bar chart, and sentiment
+   split bars by stakeholder and by topic under a headline naming the
+   most negative of each. New chart types should use Recharts too; the
+   split bars are the exception, plain HTML, because Recharts' fixed
+   label axes left them no width on a phone. Sentiment is blue / light
+   grey / red (red and green blur together for red-green colour
+   blindness). The article list stays a table: a chart of a handful of
+   rows would present a sample as a distribution.
 3. **ExportControls** — UI for exporting the current view/results
    (format TBD — propose an approach if it's not obvious from the
    design doc).

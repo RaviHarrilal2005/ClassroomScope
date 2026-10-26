@@ -24,8 +24,12 @@ def open_pipeline_runs(page):
     page.get_by_role("navigation", name="Views").get_by_role("button", name="Pipeline runs").click()
 
 
+def card(page, heading: str):
+    return page.locator("section.card").filter(has=page.get_by_role("heading", name=heading, exact=True))
+
+
 def test_d1_dashboard_shows_real_topics_and_sentiment(
-        page, frontend, environment, results_dir, record_property):
+        page, frontend, backend, environment, results_dir, record_property):
     problems = watch_console(page)
     page.goto(frontend.url, timeout=PAGE_TIMEOUT)
     expected = database.topic_facet(environment.client)
@@ -35,11 +39,12 @@ def test_d1_dashboard_shows_real_topics_and_sentiment(
                             f"{unassigned} don't fit any topic yet.")).to_be_visible(timeout=PAGE_TIMEOUT)
 
     expect(page.locator("svg.recharts-surface")).to_have_count(2)
-    labels = page.locator(".recharts-yAxis-tick-labels text")
+    topics = card(page, "Top topics")
+    labels = topics.locator(".recharts-yAxis-tick-labels text")
     expect(labels).to_have_count(len(expected["items"]))
     assert ([squash(text) for text in labels.all_text_contents()]
             == [squash(item["label"]) for item in expected["items"]])
-    assert (page.locator(".recharts-label-list text").all_text_contents()
+    assert (topics.locator(".recharts-label-list text").all_text_contents()
             == [str(item["count"]) for item in expected["items"]])
     assert page.evaluate(CLIPPED_LABELS) == []
     sentiment = database.sentiment_facet(environment.client)
@@ -48,6 +53,23 @@ def test_d1_dashboard_shows_real_topics_and_sentiment(
                             "with a sentiment result.")).to_be_visible()
     for name, share in sentiment["shares"].items():
         expect(page.get_by_text(f"{name.capitalize()} {percent(share)}%", exact=True)).to_be_visible()
+
+    # The headline names what the API picked; each breakdown gets a baseline row plus one per group.
+    body = requests.get(f"{backend.url}/api/v1/results", timeout=60).json()
+    who, topic = body["most_negative_stakeholder"], body["most_negative_topic"]
+    headline = page.locator(".headline")
+    if who:
+        expect(headline).to_contain_text(
+            f"News about {who['label']} is the most negative: {percent(who['negative'] / who['total'])}% "
+            f"of {who['total']} articles, against {percent(sentiment['shares']['negative'])}% overall.")
+    if topic:
+        expect(headline).to_contain_text(
+            f"Of the topics, {topic['label']} is the most negative: "
+            f"{percent(topic['negative'] / topic['total'])}% of {topic['total']}.")
+    groups = [r for r in body["sentiment_by_stakeholder"] if r["label"] != "undetermined"]
+    expect(card(page, "Sentiment by stakeholder").locator(".split-row")).to_have_count(len(groups) + 1)
+    expect(card(page, "Sentiment by topic").locator(".split-row")).to_have_count(len(body["sentiment_by_topic"]) + 1)
+
     expect(page.get_by_text(f"Showing {total} of {total} articles")).to_be_visible()
     expect(page.locator("table.data-table tbody tr")).to_have_count(total)
     screenshot(page, results_dir, "D1-dashboard.png", record_property)
