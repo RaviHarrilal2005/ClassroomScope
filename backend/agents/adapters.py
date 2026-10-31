@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from orchestrator.agents import Agent
@@ -187,58 +188,73 @@ class CollectionAgent(Agent):
 # ---------------------------------------------------------------------
 class SecurityAgent(Agent):
     """
-    Screen each collected article's text before any analysis reads it.
-
-    Runs agents/security/text_filter.py over the article's title and
+    Screen collected text before any analysis reads it.
+ 
+    ARTICLES. Runs agents/security/text_filter.py over the title and
     clean_content. An article the filter rejects is quarantined: its ID
     is left out of approved_ids, so no analysis agent is given it.
-
+ 
+    COMMENTS. Screens any comment that has not been screened yet,
+    independent of this run's articles. A comment can arrive without a
+    pipeline run - guardian_comments.py is a standalone script - so the
+    stage takes whatever is outstanding rather than only what collection
+    just produced. That also covers a future source, or a row inserted
+    by hand, instead of only comments that went through one function.
+ 
+    Comments have no approved_ids equivalent: they are already stored by
+    the time anything screens them. The gate is in the database instead.
+    The RLS policies on `comments` require screened = true and
+    quarantined = false, so an unscreened or flagged comment is not
+    returned to the analysis agents or to guests at all. New comments
+    arrive with screened = false, which makes the window between
+    collection and the next run fail-closed: invisible, not exposed.
+ 
     max_length raises the filter's cap for article bodies. The filter's
     own default is 50,000 characters, and the longest article in the
     corpus is twice that, so the default would quarantine the longest
-    articles for length alone.
-
-    TWO THINGS THIS DOES NOT DO, both deliberate:
-
-      * It does not persist the quarantine decision. The security
-        owners' agents/security/quarantine.py writes rejections to
-        quarantined_content, but over a direct Postgres connection
-        that the pipeline does not have, and that table was created
-        outside this repo's migrations. Decisions are logged at WARNING
-        and counted by reason in the returned summary, which is enough
-        to see what a run rejected and why, but they are not queryable
-        after the fact. See docs/pipeline-coordinator.md.
+    articles for length alone. Comments are screened at the filter's own
+    default, since the article cap would never bite on them.
+ 
+    ONE THING THIS DOES NOT DO, deliberate:
+ 
       * It does not write the filter's redacted text back. The filter
         redacts emails, phone numbers, SSNs and street addresses in the
-        text it returns, but analysis agents read clean_content straight
-        from the database, so they still see the unredacted article.
-        Screening currently decides pass/quarantine only.
-
+        text it returns, but analysis agents read clean_content and
+        body_text straight from the database, so they still see the
+        unredacted version. Screening decides pass/quarantine only.
+ 
     The filter scores 44/45 against its own adversarial suite
-    (agents/security/adversarial_test_set.py). The miss is a full name,
-    which a pattern cannot catch; the filter's own docs say it needs NER.
+    (agents/security/tests/adversarial_test_set.py). The miss is a full
+    name, which a pattern cannot catch; the filter's own docs say it
+    needs NER.
     """
-
+ 
     name = "security"
-
+ 
     # 101,377 characters is the longest article in the corpus today, so
     # this leaves real headroom while still bounding the work.
     MAX_ARTICLE_LENGTH = 200_000
-
+ 
+    # How many unscreened comments to take in one run. The 29k backlog is
+    # already screened, so ongoing volume is small - this only bounds the
+    # work if a large collection lands at once, and the rest are picked
+    # up on the next run.
+    COMMENT_BATCH = 2_000
+ 
     def __init__(self, max_length: Optional[int] = None) -> None:
         self.max_length = max_length or self.MAX_ARTICLE_LENGTH
-
+ 
     def run(self, ctx: RunContext) -> Dict[str, Any]:
         from .security import text_filter
-
+ 
         rows = _select_by_id("articles", "id, title, clean_content", ctx.article_ids)
         found = {r["id"] for r in rows}
-
+ 
         approved: List[int] = []
         quarantined: List[int] = []
         reasons: Dict[str, int] = {}
         decisions: List[Any] = []
-
+ 
         for row in rows:
             text = f"{row.get('title') or ''}\n\n{row.get('clean_content') or ''}".strip()
             result = self._screen(text_filter, text)
@@ -251,9 +267,9 @@ class SecurityAgent(Agent):
             logger.warning(
                 "Run %s: article %s quarantined (%s) matched=%r",
                 ctx.run_id, row["id"], reason, result.flagged_pattern,
-                decisions.append((row["id"], result, text))
             )
-
+            decisions.append((row["id"], result, text))
+ 
         # An ID we were given but could not read is not screened, so it
         # cannot be approved. Treat it as quarantined rather than
         # silently dropping it, which would leave the counts not adding up.
@@ -265,7 +281,7 @@ class SecurityAgent(Agent):
                 "Run %s: %d collected article(s) could not be read back for screening: %s",
                 ctx.run_id, len(missing), missing[:10],
             )
-
+ 
         if quarantined:
             logger.warning(
                 "Run %s: security quarantined %d of %d article(s): %s",
@@ -281,12 +297,20 @@ class SecurityAgent(Agent):
                     ctx.run_id, len(rows_to_log),
                 )
                 
+        comment_stats = self._screen_comments(ctx)
+ 
         return {
             "approved_ids": sorted(approved),
             "quarantined_ids": sorted(quarantined),
             "quarantine_reasons": reasons,
+            # Comment screening is reported separately. These IDs are not
+            # article IDs and must never go into approved_ids, which the
+            # coordinator validates against what collection returned.
+            "comments_screened": comment_stats["screened"],
+            "comments_quarantined": comment_stats["quarantined"],
+            "comment_quarantine_reasons": comment_stats["reasons"],
         }
-
+ 
     def _screen(self, text_filter: Any, text: str) -> Any:
         """Run the filter with the article-sized length cap."""
         original = text_filter.MAX_TEXT_LENGTH
@@ -295,6 +319,104 @@ class SecurityAgent(Agent):
             return text_filter.sanitize_text(text)
         finally:
             text_filter.MAX_TEXT_LENGTH = original
+ 
+    # --- comments ------------------------------------------------------
+ 
+    def _screen_comments(self, ctx: RunContext) -> Dict[str, Any]:
+        """Screen outstanding comments. Never fails the stage.
+ 
+        Security is fail-closed for articles on purpose: if it raises,
+        the coordinator skips every analysis stage. That is right for
+        articles, where failing to screen means failing to protect the
+        agents. It is wrong for comments, where an unscreened comment is
+        already invisible through RLS - so a bug here must not take
+        article analysis down with it.
+        """
+        try:
+            return self._screen_comments_inner(ctx)
+        except Exception as exc:
+            logger.error("Run %s: comment screening failed: %s", ctx.run_id, exc)
+            return {"screened": 0, "quarantined": 0, "reasons": {}}
+ 
+    def _screen_comments_inner(self, ctx: RunContext) -> Dict[str, Any]:
+        from .security import quarantine, text_filter
+ 
+        client = get_client()
+ 
+        pending = (
+            client.table("comments")
+            .select("comment_id, body_text")
+            .eq("screened", False)
+            .limit(self.COMMENT_BATCH)
+            .execute()
+            .data
+            or []
+        )
+        if not pending:
+            return {"screened": 0, "quarantined": 0, "reasons": {}}
+ 
+        passed_ids: List[str] = []
+        failed: List[Any] = []
+        reasons: Dict[str, int] = {}
+ 
+        # Screened at the filter's own cap, not the raised article one.
+        for row in pending:
+            result = text_filter.sanitize_text(row.get("body_text") or "")
+            if result.passed:
+                passed_ids.append(row["comment_id"])
+            else:
+                failed.append((row["comment_id"], result, row.get("body_text") or ""))
+                reason = result.reason or "unknown"
+                reasons[reason] = reasons.get(reason, 0) + 1
+ 
+        now = datetime.now(timezone.utc).isoformat()
+        failed_ids = [cid for cid, _, _ in failed]
+ 
+        # Passes become visible: the policies require screened = true.
+        self._mark_comments(ctx, passed_ids,
+                            {"screened": True, "quarantined": False, "screened_at": now})
+ 
+        # Failures stay in the table but the policies stop returning them.
+        # Nothing is destroyed, so a false positive is restored by
+        # flipping quarantined back to false.
+        self._mark_comments(ctx, failed_ids,
+                            {"screened": True, "quarantined": True, "screened_at": now})
+ 
+        if failed:
+            rows_to_log = quarantine.build_rows(failed, "comments", run_id=ctx.run_id)
+            if not quarantine.record_many(rows_to_log):
+                logger.warning(
+                    "Run %s: %d comment quarantine row(s) were not persisted (S.8)",
+                    ctx.run_id, len(rows_to_log),
+                )
+ 
+        logger.info(
+            "Run %s: screened %d comment(s), quarantined %d%s",
+            ctx.run_id, len(pending), len(failed),
+            (": " + ", ".join(f"{k}={v}" for k, v in sorted(reasons.items()))) if failed else "",
+        )
+ 
+        return {"screened": len(pending), "quarantined": len(failed), "reasons": reasons}
+ 
+    @staticmethod
+    def _mark_comments(ctx: RunContext, comment_ids: List[str],
+                       values: Dict[str, Any]) -> None:
+        """Write screening state back, in batches the API will accept."""
+        if not comment_ids:
+            return
+        client = get_client()
+        for batch in _chunks(comment_ids, 100):
+            try:
+                client.table("comments").update(values).in_(
+                    "comment_id", list(batch)
+                ).execute()
+            except Exception as exc:
+                # Leaving them unscreened is safe: RLS keeps them hidden
+                # and the next run picks them up again.
+                logger.warning(
+                    "Run %s: failed writing screening state for %d comment(s): %s",
+                    ctx.run_id, len(batch), exc,
+                )
 
 
 # ---------------------------------------------------------------------
