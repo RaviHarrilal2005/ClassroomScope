@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from orchestrator import corpus
@@ -230,6 +231,12 @@ class SecurityAgent(Agent):
     # this leaves real headroom while still bounding the work.
     MAX_ARTICLE_LENGTH = 200_000
 
+    # How many unscreened comments to take in one run. The 29k backlog
+    # is already screened, so ongoing volume is small - this only bounds
+    # the work if a large collection lands at once, and the rest are
+    # picked up on the next run.
+    COMMENT_BATCH = 2_000
+
     def __init__(self, max_length: Optional[int] = None) -> None:
         self.max_length = max_length or self.MAX_ARTICLE_LENGTH
 
@@ -286,10 +293,18 @@ class SecurityAgent(Agent):
                     ctx.run_id, len(rows_to_log),
                 )
                 
+        comment_stats = self._screen_comments(ctx)
+
         return {
             "approved_ids": sorted(approved),
             "quarantined_ids": sorted(quarantined),
             "quarantine_reasons": reasons,
+            # Comment screening is reported separately. These IDs are not
+            # article IDs and must never go into approved_ids, which the
+            # coordinator validates against what collection returned.
+            "comments_screened": comment_stats["screened"],
+            "comments_quarantined": comment_stats["quarantined"],
+            "comment_quarantine_reasons": comment_stats["reasons"],
         }
 
     def _screen(self, text_filter: Any, text: str) -> Any:
@@ -300,6 +315,103 @@ class SecurityAgent(Agent):
             return text_filter.sanitize_text(text)
         finally:
             text_filter.MAX_TEXT_LENGTH = original
+
+    # --- comments ------------------------------------------------------
+
+    def _screen_comments(self, ctx: RunContext) -> Dict[str, Any]:
+        """Screen outstanding comments. Never fails the stage.
+
+        Security is fail-closed for articles on purpose: if it raises, the
+        coordinator skips every analysis stage. That is right for articles,
+        where failing to screen means failing to protect the agents. It is
+        wrong for comments, where an unscreened comment is already
+        invisible through RLS - so a bug here must not take article
+        analysis down with it.
+        """
+        try:
+            return self._screen_comments_inner(ctx)
+        except Exception as exc:
+            logger.error("Run %s: comment screening failed: %s", ctx.run_id, exc)
+            return {"screened": 0, "quarantined": 0, "reasons": {}}
+
+    def _screen_comments_inner(self, ctx: RunContext) -> Dict[str, Any]:
+        from .security import quarantine, text_filter
+
+        pending = (
+            get_client()
+            .table("comments")
+            .select("comment_id, body_text")
+            .eq("screened", False)
+            .limit(self.COMMENT_BATCH)
+            .execute()
+            .data
+            or []
+        )
+        if not pending:
+            return {"screened": 0, "quarantined": 0, "reasons": {}}
+
+        passed_ids: List[str] = []
+        failed: List[Any] = []
+        reasons: Dict[str, int] = {}
+
+        # Screened at the filter's own cap, not the raised article one.
+        for row in pending:
+            body = row.get("body_text") or ""
+            result = text_filter.sanitize_text(body)
+            if result.passed:
+                passed_ids.append(row["comment_id"])
+            else:
+                failed.append((row["comment_id"], result, body))
+                reason = result.reason or "unknown"
+                reasons[reason] = reasons.get(reason, 0) + 1
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Passes become visible: the policies require screened = true.
+        self._mark_comments(ctx, passed_ids,
+                            {"screened": True, "quarantined": False, "screened_at": now})
+
+        # Failures stay in the table but the policies stop returning them.
+        # Nothing is destroyed, so a false positive is restored by flipping
+        # quarantined back to false.
+        self._mark_comments(ctx, [cid for cid, _, _ in failed],
+                            {"screened": True, "quarantined": True, "screened_at": now})
+
+        if failed:
+            rows_to_log = quarantine.build_rows(failed, "comments", run_id=ctx.run_id)
+            if not quarantine.record_many(rows_to_log):
+                logger.warning(
+                    "Run %s: %d comment quarantine row(s) were not persisted (S.8)",
+                    ctx.run_id, len(rows_to_log),
+                )
+
+        logger.info(
+            "Run %s: screened %d comment(s), quarantined %d%s",
+            ctx.run_id, len(pending), len(failed),
+            (": " + ", ".join(f"{k}={v}" for k, v in sorted(reasons.items()))) if failed else "",
+        )
+
+        return {"screened": len(pending), "quarantined": len(failed), "reasons": reasons}
+
+    @staticmethod
+    def _mark_comments(ctx: RunContext, comment_ids: List[str],
+                       values: Dict[str, Any]) -> None:
+        """Write screening state back, in batches the API will accept."""
+        if not comment_ids:
+            return
+        client = get_client()
+        for batch in _chunks(comment_ids, 100):
+            try:
+                client.table("comments").update(values).in_(
+                    "comment_id", list(batch)
+                ).execute()
+            except Exception as exc:
+                # Leaving them unscreened is safe: RLS keeps them hidden and
+                # the next run picks them up again.
+                logger.warning(
+                    "Run %s: failed writing screening state for %d comment(s): %s",
+                    ctx.run_id, len(batch), exc,
+                )
 
 
 # ---------------------------------------------------------------------
