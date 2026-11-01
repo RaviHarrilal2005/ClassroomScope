@@ -18,12 +18,16 @@ import pytest
 
 
 def articles(n):
-    return pd.DataFrame({"id": range(1, n + 1), "clean_content": [f"article {i}" for i in range(n)]})
+    return pd.DataFrame({"id": range(1, n + 1), "clean_content": [f"article {i}" for i in range(n)],
+                         "content_hash": [str(i) for i in range(n)], "is_relevant": True,
+                         "llm_relevant": True, "processing_status": "success"})
 
 
 class FakeModel:
     def __init__(self, topics=None, error=None):
         self.topics, self.error = topics, error
+        self.embedding_model = [types.SimpleNamespace(auto_model=types.SimpleNamespace(
+            config=types.SimpleNamespace(_commit_hash="test-revision")))]
 
     def fit_transform(self, documents):
         if self.error:
@@ -62,7 +66,7 @@ def manifest(path):
 
 def test_a_candidate_is_saved_with_its_topics_and_manifest(train_auto, tmp_path, monkeypatch):
     topics = [0, 0, 1, 1, -1, 0, 1, 0, 0, 1, -1, 2]
-    monkeypatch.setattr(train_auto, "build_model", lambda min_topic_size: FakeModel(topics))
+    monkeypatch.setattr(train_auto, "build_model", lambda min_topic_size, topic_count=None: FakeModel(topics))
 
     train_auto.train("auto-v1")
 
@@ -82,7 +86,7 @@ def test_an_existing_version_is_never_overwritten(train_auto, tmp_path, monkeypa
     existing = tmp_path / "auto-v1"
     existing.mkdir()
     (existing / "model.pkl").write_bytes(b"reviewed candidate")
-    monkeypatch.setattr(train_auto, "build_model", lambda min_topic_size: pytest.fail("trained anyway"))
+    monkeypatch.setattr(train_auto, "build_model", lambda min_topic_size, topic_count=None: pytest.fail("trained anyway"))
 
     with pytest.raises(FileExistsError):
         train_auto.train("auto-v1")
@@ -91,7 +95,7 @@ def test_an_existing_version_is_never_overwritten(train_auto, tmp_path, monkeypa
 
 def test_a_failed_training_keeps_its_folder_marked_failed(train_auto, tmp_path, monkeypatch):
     monkeypatch.setattr(train_auto, "build_model",
-                        lambda min_topic_size: FakeModel(error=RuntimeError("out of memory")))
+                        lambda min_topic_size, topic_count=None: FakeModel(error=RuntimeError("out of memory")))
 
     with pytest.raises(RuntimeError):
         train_auto.train("auto-v2")
@@ -102,7 +106,7 @@ def test_a_failed_training_keeps_its_folder_marked_failed(train_auto, tmp_path, 
 
 def test_too_few_articles_fails_instead_of_inventing_topics(train_auto, tmp_path, monkeypatch):
     monkeypatch.setattr(train_auto, "load_articles", lambda: articles(5))
-    monkeypatch.setattr(train_auto, "build_model", lambda min_topic_size: pytest.fail("trained anyway"))
+    monkeypatch.setattr(train_auto, "build_model", lambda min_topic_size, topic_count=None: pytest.fail("trained anyway"))
 
     with pytest.raises(ValueError, match="at least"):
         train_auto.train("auto-v3")
@@ -116,3 +120,17 @@ def test_bad_arguments_are_refused_before_anything_is_written(train_auto, tmp_pa
     with pytest.raises(ValueError):
         train_auto.train("auto-v4", min_topic_size=1)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_duplicate_text_does_not_receive_multiple_training_votes(train_auto,tmp_path,monkeypatch):
+    frame=articles(12)
+    frame.loc[11,'clean_content']='  ARTICLE 0  '
+    monkeypatch.setattr(train_auto,'load_articles',lambda:frame)
+    monkeypatch.setattr(train_auto,'build_model',lambda *args:FakeModel([0]*6+[1]*5))
+    record=train_auto.train('deduplicated')
+    assert record['articles']==11
+    assert record['normalized_text_duplicate_ids_removed']==[12]
+    drafts=json.loads((tmp_path/'deduplicated/label-review.json').read_text())
+    assert drafts['status']=='inactive_pending_review'
+    assert [t['topic_id'] for t in drafts['topics']]==[0,1]
+    assert all(t['label'] is None and t['stable_topic_id'] is None for t in drafts['topics'])

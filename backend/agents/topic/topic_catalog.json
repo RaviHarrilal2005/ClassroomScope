@@ -2,19 +2,54 @@
   "schema_version": 1,
   "topics": {
     "T001": {
-      "label": "AI adoption and its effects on learning"
+      "label": "AI adoption and its effects on learning",
+      "description": "Patterns of student AI adoption and effects on learning, critical thinking, skills and student behavior.",
+      "includes": [
+        "Student-use surveys",
+        "AI tutoring and learning outcomes",
+        "Curriculum-centered institutional adoption"
+      ],
+      "distinguish_from": "Use T003 when concrete teaching decisions or classroom implementation are central. Use T004 when cheating or detection is central. Campus administration alone does not establish this theme."
     },
     "T002": {
-      "label": "School AI restrictions, privacy, and policy"
+      "label": "School AI restrictions, privacy, and policy",
+      "description": "Institutional decisions about permitted AI use in schools and universities, including governance, restrictions, privacy and consent.",
+      "includes": [
+        "School and university AI policies",
+        "Approved-use rules and restrictions",
+        "Institutional privacy and governance frameworks"
+      ],
+      "distinguish_from": "A policy announcement remains T002 even when cheating motivates it. A teacher describing an assignment is usually T003. Training to understand AI is T005 when that is the main focus."
     },
     "T003": {
-      "label": "Classroom AI implementation and teacher practice"
+      "label": "Classroom AI implementation and teacher practice",
+      "description": "Concrete educator practices and classroom decisions about teaching, assignments, assessment and implementation of AI tools.",
+      "includes": [
+        "Teachers adapting assignments",
+        "Classroom uses of AI in subject teaching",
+        "Educator accounts of implementing or limiting AI"
+      ],
+      "distinguish_from": "Teaching a subject with AI differs from teaching people about AI itself (T005). District policy development is T002. Broad effects on student learning are T001."
     },
     "T004": {
-      "label": "Academic integrity, cheating, and AI detection"
+      "label": "Academic integrity, cheating, and AI detection",
+      "description": "Academic honesty involving AI, including cheating, plagiarism, AI-written assessment work, detection reliability and integrity enforcement.",
+      "includes": [
+        "AI-assisted cheating and plagiarism",
+        "False positives and limitations of AI detectors",
+        "Misconduct proceedings and integrity-focused assessment"
+      ],
+      "distinguish_from": "Higher marks on undetected AI-written work are not evidence of improved learning. A broad institutional policy story may be T002; choose the central subject rather than a passing mention of cheating."
     },
     "T005": {
-      "label": "AI literacy and educational resources"
+      "label": "AI literacy and educational resources",
+      "description": "Helping students and educators understand, evaluate and use AI responsibly through literacy instruction, training and educational resources.",
+      "includes": [
+        "AI literacy curricula and resources",
+        "Understanding AI limitations and verifying outputs",
+        "Educator training and shared understanding of responsible AI use"
+      ],
+      "distinguish_from": "Using AI to teach English or mathematics is T003 when subject teaching is central. Training whose main purpose is professional AI use outside education does not automatically fit this theme."
     }
   },
   "models": {

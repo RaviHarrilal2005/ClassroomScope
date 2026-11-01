@@ -12,7 +12,9 @@ import pandas as pd
 from bertopic import BERTopic
 
 TOPIC_RESULT_COLUMNS = [
-    "article_id", "topic_id", "topic", "topic_keywords", "stable_topic_id", "model_version"
+    "article_id", "topic_id", "topic", "topic_keywords", "stable_topic_id", "model_version",
+    "suggested_topic", "suggested_stable_topic_id", "suggested_topic_similarity",
+    "suggested_topic_gap", "suggestion_method", "original_topic_id", "assignment_method", "mapping_version", "unassigned_reason"
 ]
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "provisional_topic_model_v2.pkl"
 TOPIC_CATALOG_PATH = Path(__file__).resolve().parent / "topic_catalog.json"
@@ -31,6 +33,12 @@ def get_model_registration(model_path):
     mapping = registration["topic_mapping"]
     if len(set(mapping.values())) != len(mapping) or not set(mapping.values()) <= set(catalog["topics"]):
         raise ValueError("Invalid stable topic mapping in topic_catalog.json.")
+    # Bind provenance to the actual catalog, not a proposed future definition.
+    payload = {"topics": catalog["topics"], "topic_mapping": mapping,
+               "labels": registration["labels"]}
+    registration["mapping_version"] = "sha256:" + hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
     return registration
 
 def get_database():
@@ -104,13 +112,9 @@ def use_installed_umap_functions(topic_model, distances=None):
             setattr(umap_model, attr, getattr(distances, func.py_func.__name__))
 
 def eligible_articles(articles):
-    """Relevant, successfully processed articles with text, one per content hash.
-
-    Shared by inference and train_auto.py, so a model is trained on exactly
-    the kind of article it will later be asked to assign.
-    """
+    """Apply shared relevance, text, and duplicate rules for training and inference."""
     if articles.empty:
-        return articles
+        return articles.copy()
     articles = articles[
         (articles["is_relevant"] == True)
         & (articles["llm_relevant"] == True)
@@ -120,10 +124,50 @@ def eligible_articles(articles):
     # Only hashes that are present establish duplicate identity.
     hashes = articles["content_hash"]
     duplicate = hashes.notna() & hashes.ne("") & hashes.duplicated()
-    return articles[~duplicate].reset_index(drop=True)
+    articles = articles[~duplicate].reset_index(drop=True)
+    return articles
+
+def add_unassigned_suggestions(results, documents, topic_model, registration):
+    """Suggest strong topic fits for review without changing final assignments."""
+    import numpy as np
+    positions = [i for i, topic in enumerate(results["topic_id"]) if topic == -1]
+    if not positions:
+        return results
+    # BERTopic stores topic vectors in sorted topic-ID order, including -1.
+    ordered = sorted(topic_model.get_topics())
+    candidates = [(i, topic) for i, topic in enumerate(ordered) if topic != -1]
+    if len(candidates) < 2:
+        return results
+    vectors = np.asarray(topic_model.topic_embeddings_, dtype=float)
+    if vectors.ndim != 2 or len(vectors) != len(ordered):
+        raise ValueError("Saved topic vectors do not match topic IDs")
+    vectors = vectors[[i for i, _ in candidates]]
+    # Encode singly as well: batch padding/numerics must not influence a threshold decision.
+    embeddings = np.asarray([topic_model.embedding_model.embed_documents(
+        [documents[i]], verbose=False
+    )[0] for i in positions], dtype=float)
+    norms = np.linalg.norm(vectors, axis=1)
+    if not np.isfinite(vectors).all() or (norms == 0).any():
+        raise ValueError("Saved topic vectors are invalid")
+    for position, embedding in zip(positions, embeddings):
+        results.at[position, "suggestion_method"] = "topic-cosine-0.85-gap-0.03-review-only-v3"
+        norm = np.linalg.norm(embedding)
+        if not np.isfinite(embedding).all() or norm == 0:
+            continue
+        scores = (vectors @ embedding) / (norms * norm)
+        ranking = np.argsort(-scores, kind="stable")
+        best = float(scores[ranking[0]])
+        gap = best - float(scores[ranking[1]])
+        results.at[position, "suggested_topic_similarity"] = best
+        results.at[position, "suggested_topic_gap"] = gap
+        if best >= 0.85 and gap >= 0.03:
+            topic = str(candidates[ranking[0]][1])
+            results.at[position, "suggested_topic"] = registration["labels"][topic]
+            results.at[position, "suggested_stable_topic_id"] = registration["topic_mapping"][topic]
+    return results
 
 def analyze_topics(articles, topic_count=None, model_path=None):
-    """Assign articles with a saved model. topic_count is retained for caller compatibility.
+    """Assign articles to the topics in a saved model.
 
     Topic count is chosen during deliberate training, never during inference.
     """
@@ -141,7 +185,21 @@ def analyze_topics(articles, topic_count=None, model_path=None):
     known_topics = {str(topic) for topic in topic_info.index if topic != -1}
     if known_topics != set(registration["topic_mapping"]):
         raise ValueError("Saved model topics do not match the registered topic mapping.")
-    topics, _ = topic_model.transform(articles["clean_content"].tolist())
+    documents = articles["clean_content"].tolist()
+    strategy = registration.get("embedding_strategy", "truncate-v1")
+    saved_strategy = getattr(topic_model, "article_embedding_strategy", "truncate-v1")
+    if saved_strategy != strategy:
+        raise ValueError("Saved model embedding strategy does not match its registration")
+    if strategy != "truncate-v1":
+        raise ValueError(f"Unsupported article embedding strategy: {strategy}")
+    # UMAP transform positions depend on batch composition. A canonical singleton
+    # transform gives each article the same inference context, regardless of callers.
+    topics = []
+    for document in documents:
+        prediction, _ = topic_model.transform([document])
+        if len(prediction) != 1:
+            raise ValueError("Single-article inference returned an invalid prediction count")
+        topics.append(int(prediction[0]))
     labels = registration["labels"]
     results = pd.DataFrame({
         "article_id": articles["id"].tolist(),
@@ -155,18 +213,33 @@ def analyze_topics(articles, topic_count=None, model_path=None):
             None if topic == -1 else registration["topic_mapping"][str(topic)] for topic in topics
         ],
         "model_version": registration["version"],
+        "mapping_version": registration.get("mapping_version"),
+        "unassigned_reason": ["uncertain_fit" if topic == -1 else None for topic in topics],
+        "original_topic_id": topics,
+        "assignment_method": "bertopic-single-document-v1",
     }, columns=TOPIC_RESULT_COLUMNS)
+    results = add_unassigned_suggestions(results, documents, topic_model, registration)
     print(f"Reused saved topic model: {model_path.name} ({registration['version']})")
     return results
 
-def run_topic_agent(articles, topic_count=None):
+def summarize_topic_results(results):
+    """Count final assignments; review-only suggestions remain Unassigned."""
+    unassigned = int(results["topic_id"].eq(-1).sum())
+    return {
+        "processed": len(results),
+        "assigned": len(results) - unassigned,
+        "unassigned": unassigned,
+    }
+
+def run_topic_agent(articles):
     try:
-        results = analyze_topics(articles, topic_count)
+        results = analyze_topics(articles)
 
         return {
             "agent": "topic",
             "status": "success" if not results.empty else "skipped",
             "results": results,
+            **summarize_topic_results(results),
             "error": None,
         }
 
@@ -184,23 +257,22 @@ def run_topic_agent(articles, topic_count=None):
 class TopicAgent:
     name = "topic"
 
-    def __init__(self, topic_count=6):
-        self.topic_count = topic_count
-
     def run(self, ctx):
         articles = load_articles(ctx.approved_ids)
 
         if articles.empty:
             return {
                 "processed": 0,
+                "assigned": 0,
+                "unassigned": 0,
                 "article_ids": [],
             }
 
-        results = analyze_topics(articles, topic_count=self.topic_count)
+        results = analyze_topics(articles)
         inserted = save_topic_results(results)
 
         return {
-            "processed": len(results),
+            **summarize_topic_results(results),
             "inserted": inserted,
             "preserved": len(results) - inserted,
             "article_ids": results["article_id"].tolist(),
@@ -217,7 +289,7 @@ if __name__ == "__main__":
         )
         raise SystemExit(2)
 
-    outcome = run_topic_agent(articles, topic_count=6)
+    outcome = run_topic_agent(articles)
 
     if outcome["status"] == "failed":
         error = outcome["error"]
@@ -234,7 +306,9 @@ if __name__ == "__main__":
     try:
         inserted = save_topic_results(outcome["results"])
         print(
-            f"Analyzed {len(outcome['results'])} articles. Inserted {inserted} new results; "
+            f"Processed {outcome['processed']} articles: "
+            f"{outcome['assigned']} assigned, {outcome['unassigned']} unassigned. "
+            f"Inserted {inserted} new results; "
             f"preserved {len(outcome['results']) - inserted} existing assignments."
         )
     except Exception as exc:

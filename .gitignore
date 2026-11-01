@@ -10,6 +10,7 @@ npm-debug.log*
 __pycache__/
 *.pyc
 .venv/
+.venv-topic-local/
 venv/
 .pytest_cache/
 
@@ -26,3 +27,41 @@ Thumbs.db
 
 # End-to-end results: one folder per session (backend/e2e/results/<date-time>/)
 backend/e2e/results/
+
+# Local article review corpora and generated experiments
+/review/
+/backend/agents/topic/models/*/
+
+# Inactive topic experiments retained locally (not part of the release)
+/backend/agents/topic/article_representation.py
+/backend/agents/topic/boundary_review.py
+/backend/agents/topic/compare_whole_article.py
+/backend/agents/topic/evaluate_guided_groups.py
+/backend/agents/topic/evaluate_representation.py
+/backend/agents/topic/full_context_candidate.py
+/backend/agents/topic/local_semantic.py
+/backend/agents/topic/neighbor_rescue.py
+/backend/agents/topic/rejection_candidate.py
+/backend/agents/topic/repair_local_evidence.py
+/backend/agents/topic/requirements-local.txt
+/backend/agents/topic/reviewed_candidate.py
+/backend/agents/topic/scope_assessment.py
+/backend/tests/test_article_representation.py
+/backend/tests/test_full_context_candidate.py
+/backend/tests/test_guided_topic_groups.py
+/backend/tests/test_local_evidence_repair.py
+/backend/tests/test_local_semantic_topic.py
+/backend/tests/test_neighbor_rescue.py
+/backend/tests/test_reviewed_topic_candidate.py
+/backend/tests/test_topic_boundary_review.py
+/backend/tests/test_topic_rejection_candidate.py
+/backend/tests/test_topic_scope_assessment.py
+/backend/tests/test_whole_article_comparison.py
+/docs/guided-grouping-plan-2026-10-29.md
+/docs/guided-grouping-result-2026-10-29.md
+/docs/local-semantic-classifier-plan.md
+/docs/local-semantic-classifier-result.md
+/docs/topic-boundary-examples-plan.md
+/docs/topic-boundary-examples-result.md
+/docs/whole-article-comparison-plan.md
+/docs/whole-article-comparison-result.md

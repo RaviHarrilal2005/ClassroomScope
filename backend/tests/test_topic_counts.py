@@ -36,3 +36,10 @@ def test_no_rows_is_unavailable_rather_than_an_empty_chart():
     none_assigned = top_topics([row(None)] * 3)
     assert none_assigned["available"] is False
     assert "3" in none_assigned["reason"]
+
+
+def test_all_unassigned_count_is_preserved():
+    result=top_topics([row(None)]*4)
+    assert result['available'] is False
+    assert result['unassigned']==4
+    assert result['counted']==0

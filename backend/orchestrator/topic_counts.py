@@ -34,7 +34,9 @@ def top_topics(rows: Iterable[Dict[str, Any]]) -> Facet:
 
     if not counts:
         if unassigned:
-            return unavailable(f"None of the {unassigned} analysed articles has a topic yet.")
+            result = unavailable(f"None of the {unassigned} analysed articles has a topic yet.")
+            result["unassigned"] = unassigned
+            return result
         return unavailable("topic_results has no rows yet.")
 
     items = sorted(
