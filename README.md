@@ -1,6 +1,6 @@
 # ClassroomScope (in progress)
 
-Topic agent: see [agreed design and implementation gaps](docs/topic-agent-design.md).
+Topic agent: see the [BERTopic operating guide](docs/topic-agent.md) and [portable deployment instructions](deploy/topic/README.md).
 
 **Status:** front-end skeleton confirmed working end-to-end, and the
 backend pipeline coordinator's groundwork is in place (see

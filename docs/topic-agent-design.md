@@ -1,4 +1,11 @@
-# Topic agent design
+# BERTopic-primary design decision - November 1, 2026
+
+The user selected BERTopic as the primary discovery and routine assignment method. See [topic-agent.md](topic-agent.md) for current behavior. This supersedes the hybrid-primary recommendation preserved in the history below. Language-model assignment is optional and inactive. Model/category accuracy remains provisional; selecting the simpler method does not resolve mixed clusters.
+
+# Topic agent design record
+
+The final hybrid architecture and current implementation are documented in [topic-agent.md](topic-agent.md). This file retains the earlier November 1 decisions and code-review history. Statements below about the active saved BERTopic assignment describe the previous baseline; the semantic-primary implementation described in that historical note was subsequently superseded by the BERTopic decision above. Earlier implementation gaps concerning discovery-cluster registration do not block semantic category assignment, which has its own versioned five-category contract.
+
 
 Design decisions agreed November 1, 2026. This document separates the intended design from the current implementation; it does not certify model accuracy or project acceptance.
 
@@ -26,7 +33,7 @@ Unassigned is an outcome outside the five categories. The user confirmed exactly
 | `outside_groups` | Outside the five groups | The main subject does not fit any reporting category. |
 | `uncertain_fit` | Uncertain fit | No supported category can be selected, including a discovered theme awaiting mapping review. |
 
-There is no separate unmapped-theme reason. Processing failures remain Failed, not Unassigned. Do not infer content insufficiency or outside-category scope from a BERTopic outlier alone: its supported reason is `uncertain_fit`. Empty text is currently skipped before inference. The code now emits `uncertain_fit` for model outliers and null for assigned results. Migration `20261101000100_topic_result_provenance.sql` adds nullable storage fields; it has been prepared but not applied to the live database. The other two reasons require explicit content/scope checks or human review before use.
+There is no separate unmapped-theme reason. Processing failures remain Failed, not Unassigned. Do not infer content insufficiency or outside-category scope from a BERTopic outlier alone: its supported reason is `uncertain_fit`. Empty text is currently skipped before inference. The code now emits `uncertain_fit` for model outliers and null for assigned results. Migration `20261101000100_topic_result_provenance.sql` adds nullable storage fields; the user applied it and a live read verified both fields. The other two reasons require explicit content/scope checks or human review before use.
 
 ## Two separate workflows
 
@@ -88,7 +95,7 @@ For raw Unassigned results, a review-only second check suggests the closest regi
 | `suggested_topic`, `suggested_stable_topic_id` | Qualifying fallback result |
 | `suggested_topic_similarity`, `suggested_topic_gap`, `suggestion_method` | Fallback diagnostics and policy |
 
-`topic_id = -1` represents Unassigned. Results are inserted into Supabase `topic_results` with conflicts on article ID ignored; historical assignments are preserved. Report actual inserted and preserved counts. Standalone processing returns success/skipped/failed; coordinator stage handling records agent failures. There is no current per-article review queue. New results include `unassigned_reason` and `mapping_version`; apply the provenance migration before live inference. Mapping version is a SHA-256 of canonical category definitions, mapping and registered labels, reflecting the actual catalog rather than proposed definitions. Legacy rows remain null.
+`topic_id = -1` represents Unassigned. Results are inserted into Supabase `topic_results` with conflicts on article ID ignored; historical assignments are preserved. Report actual inserted and preserved counts. Standalone processing returns success/skipped/failed; coordinator stage handling records agent failures. There is no current per-article review queue. New results include `unassigned_reason` and `mapping_version`; the provenance migration was applied and its fields verified live. Mapping version is a SHA-256 of canonical category definitions, mapping and registered labels, reflecting the actual catalog rather than proposed definitions. Legacy rows remain null.
 
 ## Alignment work before implementation sign-off
 
@@ -97,8 +104,8 @@ For raw Unassigned results, a review-only second check suggests the closest regi
 | Student-only T001 | Historical catalog includes curriculum-centered institutional adoption. Review mapped members and reference labels before changing active registration or claiming compliance. |
 | Many discovered themes may share one category | Registration currently rejects repeated stable IDs. Change validation and verify downstream behavior before activating such a mapping. |
 | Unmapped discoveries remain Unassigned | Current active registration expects every non-outlier model topic to be mapped. Implement explicit partial mapping before activation of an unmapped candidate. |
-| Reasoned Unassigned outcomes | Code emits uncertain_fit for outliers; apply the prepared nullable-column migration. Current inference does not establish scope/content judgments. |
-| Versioned category mapping | Code records a catalog/mapping hash; apply the prepared migration. Historical rows remain unchanged. |
+| Reasoned Unassigned outcomes | Code emits uncertain_fit for outliers; the nullable-column migration was applied and verified. Current inference does not establish scope/content judgments. |
+| Versioned category mapping | Code records a catalog/mapping hash; the prepared migration was applied and verified. Historical rows remain unchanged. |
 | Reviewed training corpus | Apply a versioned exclusion/copy manifest and address extraction defects before retraining. |
 | Evidence for final quality | Evaluate fresh articles labeled without seeing predictions, including all five categories and outside-catalog cases. |
 
@@ -150,3 +157,7 @@ Earlier reports describe their dated experiments and definitions. Use this docum
 ## First category review completed - November 1, 2026
 
 The user completed a deliberately selected example review spanning all five historical clusters. Confirmed decisions and rationale are in `topic-category-review-2026-11-01.md`. Mixed membership was observed in every reviewed cluster. The five reporting categories remain the agreed design, but remapping existing clusters alone cannot reproduce all confirmed article decisions. These examples are development evidence; do not use them as an independent final accuracy test. The saved model remains provisional pending an evaluated model/assignment change. Review-only suggestions preserve outliers but do not identify every erroneous named assignment.
+
+## Live schema status - November 1, 2026
+
+The user applied the provenance migration; live reads verified both fields. A controlled run inserted article 54, read back all emitted fields and confirmed repeated insert preserves the row. The user also applied the guarded migration removing unused topic_results.run_id; verification confirmed all required result fields remain and the table contains 350 results. The assigned example did not exercise live Unassigned suggestions. See topic-agent-live-check-2026-11-01.md. No browser/dashboard demonstration has been completed.

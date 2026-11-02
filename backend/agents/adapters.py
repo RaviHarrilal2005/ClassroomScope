@@ -430,26 +430,24 @@ class ClassificationAgent(Agent):
 # Topic
 # ---------------------------------------------------------------------
 class TopicAgent(Agent):
-    """
-    A topic for each approved article, from the saved BERTopic model.
+    """Primary saved BERTopic assignment.
 
-    agents/topic/topic_model.py has its own TopicAgent that already
-    follows the agent contract; this shell only defers importing it.
-    That module loads BERTopic and its ML stack, and building the
-    registry must not need any of it.
-
-    The registry only uses it where BERTopic is installed and the saved
-    model has been pulled with Git LFS (see agents/topic/TOPIC_IDENTITY.md).
-    A file whose checksum is not registered in topic_catalog.json still
-    fails the stage: it never trains a replacement.
+    Language-model implementation is archived locally and is not a pipeline option.
+    BERTopic discovery remains a separate deliberate operation in train_auto.py.
+    Imports are deferred so registry construction never loads model weights.
     """
 
     name = "topic"
 
     def run(self, ctx: RunContext) -> Dict[str, Any]:
-        from .topic import topic_model
-
-        return topic_model.TopicAgent().run(ctx)
+        from .config import load_env
+        import os
+        load_env()
+        method = os.getenv("TOPIC_METHOD", "bertopic")
+        if method != "bertopic":
+            raise ValueError("Only TOPIC_METHOD=bertopic is supported; language-model experiments are archived")
+        from .topic.topic_model import TopicAgent as Implementation
+        return Implementation().run(ctx)
 
 
 # ---------------------------------------------------------------------

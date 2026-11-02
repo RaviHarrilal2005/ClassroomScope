@@ -79,6 +79,7 @@ def test_building_the_live_registry_does_not_load_the_topic_model():
 @pytest.fixture
 def topic_models(monkeypatch, tmp_path):
     """An empty saved-models folder, standing in for agents/topic/models/."""
+    monkeypatch.setenv("TOPIC_METHOD", "bertopic")
     monkeypatch.setattr("orchestrator.registry.TOPIC_MODELS", tmp_path)
     return tmp_path
 
@@ -255,3 +256,18 @@ def test_a_dead_source_does_not_take_the_others_down(monkeypatch):
     monkeypatch.setitem(fetchers.SOURCES, "rss", lambda: [{"url": "https://x/2"}])
 
     assert len(fetchers.fetch_all()) == 2
+
+
+def test_adapter_defaults_to_bertopic(monkeypatch):
+    from types import SimpleNamespace
+    from agents.topic import topic_model
+    monkeypatch.delenv('TOPIC_METHOD', raising=False)
+    monkeypatch.setattr('agents.config.load_env', lambda: None)
+    monkeypatch.setattr(topic_model.TopicAgent, 'run', lambda self, ctx: {'processed': 7})
+    assert TopicAgent().run(SimpleNamespace(approved_ids=[])) == {'processed': 7}
+
+
+def test_archived_method_cannot_be_selected(monkeypatch):
+    monkeypatch.setenv('TOPIC_METHOD', 'semantic')
+    with pytest.raises(ValueError, match='archived'):
+        build_default_registry(live=True)

@@ -1,0 +1,3 @@
+# BERTopic-primary backend deployment. No Qwen/MLX dependency required.
+-r requirements.txt
+gunicorn==23.0.0

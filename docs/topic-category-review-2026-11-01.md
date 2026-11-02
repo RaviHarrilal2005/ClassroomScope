@@ -7,26 +7,18 @@ Human review under the agreed five-category design. T001 covers student adoption
 | 1756 | T005 - AI literacy | The user selected T005 after reviewing the institutional framework example. AI knowledge, critical evaluation and responsible-use education support this placement. Replaces the earlier T001 reference label for future evaluation under this design. |
 | 5149 | T001 - Student adoption and learning effects | The user confirmed T001 for the survey of student AI use and perceived effects on learning, creativity and skills. |
 | 5238 | T001 - Student adoption and learning effects | The user confirmed T001 after discussion of the mixed student-use survey and teacher lesson-planning coverage. Student adoption supports the primary category despite secondary classroom-practice coverage. |
-
 | 583 | T001 - Student adoption and learning effects | The user confirmed T001 for reporting on student AI use, homework performance, exam scores and learning. Historical assignment: T001. |
 | 497 | T002 - Policy and governance | The user confirmed T002 for law-school restrictions on devices and permitted AI use. Historical assignment: T001. |
 | 2339 | T005 - AI literacy | The user confirmed T005 for an educator workshop on teaching foundational AI concepts and critical understanding. Historical assignment: T001. |
-
-
 | 1000 | T002 - Policy and governance | The user confirmed T002 for D.C. institutional guidance on permitted, cautious and prohibited educator AI use. Historical model assignment: T002. |
 | 3288 | T005 - AI literacy | The user confirmed T005 for an educator course on AI risks, limitations, student wellbeing and responsible use. Historical model assignment: T002. |
-
 | 3286 | Unassigned - Uncertain fit | The user explicitly selected Unassigned after reviewing overlapping governance, classroom reflection and literacy content. Reason code: `uncertain_fit`. Supersedes the earlier T003 reference label for future evaluation under this design. Historical model assignment: T002. |
-
 | 801 | T005 - AI literacy | The user approved this assignment after closer review. The main subject is developing educator AI competence through structured professional learning; classroom tasks and leadership decisions support that goal. Historical model assignment: T003. |
 | 103 | T002 - Policy and governance | The user approved this assignment after closer review. The available podcast summary identifies a district-policy research method and a reported finding, providing enough substantive text to classify its policy subject. No claims are made about unheard podcast content. Historical model assignment: T003. |
-
 | 3324 | T003 - Classroom practice | The user confirmed T003 for teachers using AI to create and adapt visual classroom resources. Historical model assignment: T003. |
-
 | 326 | T004 - Academic integrity and detection | The user approved T004 for emotional effects of misconduct investigations framed around unreliable AI accusations. The reported study concerns misconduct generally, not exclusively AI cases. Historical model assignment: T004. |
 | 393 | T002 - Policy and governance | The user approved T002 for UNSW AI rollout rules, assessment-use categories, safeguards and institutional oversight. Historical model assignment: T004. |
 | 643 | T003 - Classroom practice | The user approved T003 for four professors redesigning assignments and assessment, including permitted AI use. Cheating is a motivation; concrete teaching and assessment practices are central. Historical model assignment: T004. |
-
 | 500 | T005 - AI literacy | The user confirmed T005 for Experience AI resources teaching AI concepts and critical evaluation. Historical model assignment: T005. |
 | 118 | T003 - Classroom practice | The user confirmed T003 for educator adaptation of chatbots and materials for bilingual learners. Historical model assignment: T005. |
 | 2262 | T003 - Classroom practice | The user confirmed T003 for faculty-designed environmental science instruction using storytelling and AI-generated visuals. Reported student feedback does not isolate AI's learning effect. Historical model assignment: T005. |

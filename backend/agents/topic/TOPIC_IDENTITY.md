@@ -1,4 +1,7 @@
-# Saved topic model
+# Historical saved BERTopic assignment and discovery
+
+**Current primary: BERTopic.** The user selected the saved-model method on November 1, 2026. Code, local configuration and deployment default to `TOPIC_METHOD=bertopic`. Semantic assignment is archived locally and is not an active pipeline option. See `docs/topic-agent.md` for current operations; dated policies below retain historical context.
+
 
 Normal runs load `models/provisional_topic_model_v2.pkl` and call `transform`.
 They do not train, change topic count, or update model files. Even a single

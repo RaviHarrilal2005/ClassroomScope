@@ -29,3 +29,7 @@ Total removed: 1,655,913 bytes. Generated directories may reappear when tests or
 ## Design review
 
 See `topic-agent-design.md` for the agreed five-category design, student-only T001 scope, current contracts and outstanding implementation work. No production model, catalog, threshold or database records were changed.
+
+## BERTopic-only cleanup
+
+Archived the optional portable language-model classifier, adapter and tests under ignored review/archived-portable-language-model-2026-11-01/. Removed their production selection paths and optional example settings. Historical Mac experiments remain local as requested. Removed three unactivated cluster-count candidate pickle binaries (1,325,545,303 bytes), retaining shared embeddings, scripts, corpus provenance, assignments, metrics, samples and reports. Active model and database were not changed. Deployment files, migrations, current documentation and the model required for BERTopic were retained.

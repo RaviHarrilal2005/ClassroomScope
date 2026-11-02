@@ -108,8 +108,14 @@ def build_default_registry(live: Optional[bool] = None, **collection_options) ->
             registry.register(CLASSIFICATION, ClassificationAgent("baseline"))
         # Where the topic model cannot run, the stage would fail on every
         # run, so it stays stubbed until BERTopic and a saved model are here.
+        import os
+        from agents.config import load_env
+        load_env()
+        topic_method = os.getenv("TOPIC_METHOD", "bertopic")
+        if topic_method != "bertopic":
+            raise ValueError("Only TOPIC_METHOD=bertopic is supported; language-model experiments are archived")
         if _topic_model_available():
-            logger.info("Registry: saved topic model found, using the topic agent")
+            logger.info("Registry: using %s topic assignment", topic_method)
             registry.register(TOPIC, TopicAgent())
         else:
             logger.info("Registry: no saved topic model or no BERTopic, topic stays stubbed")

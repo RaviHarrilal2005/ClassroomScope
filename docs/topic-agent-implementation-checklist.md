@@ -1,38 +1,48 @@
-# Topic agent implementation checklist
+# BERTopic-primary release status - November 1, 2026
 
-As of November 1, 2026. Design decisions are documented; model acceptance and the items below remain separate work. See `topic-agent-design.md` for contracts and `topic-agent-validation.md` for evaluation.
+- [x] BERTopic restored as the default in the adapter, registry, local/example configuration, CLI and deployment.
+- [x] Review-only suggestions retained; model outliers remain Unassigned.
+- [x] Model and mapping provenance fields retained; historical database results preserved.
+- [x] Discovery and LDA tools remain separate deliberate operations.
+- [x] Language-model implementation archived locally; removed its active pipeline selection and imports.
+- [x] Current operating/deployment guides updated.
+- [ ] Repair verified extraction defects and compare a corrected training snapshot against unchanged inputs.
+- [ ] Validate category quality independently; the existing mapping is provisional and mixed.
+- [x] Verify live read-only API counts/filters and replay captured responses in isolated local Chrome; all five topic filters and clearing filters passed.
+- Cloud/Linux deployment is outside the required scope, confirmed by the user; it is not a release blocker.
 
-## Completed in this design session
+The semantic-runtime checklist below is historical experimental work, not the primary release requirements.
 
-- [x] Retain five reporting categories and define student-only T001.
-- [x] Review selected boundary examples from all five historical clusters and save confirmed labels separately from historical results.
-- [x] Keep initially Unassigned model results Unassigned; retain review-only suggestions.
-- [x] Verify review-only behavior with existing inference, storage integration and count tests (10 passed).
-- [x] Agree three Unassigned reasons: insufficient content, outside the five groups and uncertain fit.
-- [x] Document deliberate discovery, review and activation, preserving historical results.
-- [x] Document validation and distinguish development evidence from independent evaluation.
+# Topic agent release checklist - November 1, 2026
 
-## Implementation before alignment sign-off
+Current architecture and operations: [topic-agent.md](topic-agent.md).
 
-- [ ] Review/replace the active T001 mapping and historical reference examples against student-only scope. Updating descriptions alone does not change semantic decisions.
-- [ ] Permit multiple discovered clusters to map to a category; verify registry validation, fallback suggestions and downstream counts.
-- [ ] Support explicitly unmapped model topics without failure; leave results Unassigned with Uncertain fit. Review mapping before activation.
-- [x] Emit `uncertain_fit` for model outliers and null for assigned results; prepare nullable database fields.
-- [ ] Apply `20261101000100_topic_result_provenance.sql` before live inference; verify storage.
-- [ ] Add explicit scope/content checks or reviewed decisions before using the other reasons. Empty inputs are currently skipped.
-- [x] Emit a SHA-256 mapping/definition/label reference; historical rows are preserved. Live storage awaits migration application.
-- [ ] Preserve training exclusions and copy decisions in a versioned manifest; repair and verify extraction issues before new training.
-- [ ] Evaluate a separately frozen model/assignment change capable of separating mixed cluster members. Do not promote optional local classifiers without independent evidence; retain unsupervised discovery.
+## Implemented
 
-## Evidence before activation
+- [x] Five reviewed category definitions, including student-only T001.
+- [x] Separate BERTopic discovery and LDA comparison tooling.
+- [x] Primary in-process semantic assignment using pinned Qwen revision on CPU/CUDA; optional HTTP runtime.
+- [x] Pipeline adapter, explicit legacy rollback and no automatic fallback on failures.
+- [x] Full-text span evidence, strict category/reason contract and bounded input/output.
+- [x] Three Unassigned reasons, explicit input-limit review handling and failed-stage routing for bad outputs/transport/storage errors.
+- [x] Insert-only storage, mapping/definition and prompt/model provenance; historical results preserved.
+- [x] Database migrations applied; earlier live stored-result preservation verified.
+- [x] Portable deployment files, lean dependency manifest and operating guide.
+- [x] Experimental code remains local, excluded from Git; new runtime has no imports from those files.
 
-- [ ] Run fresh independently labeled article evaluation, including all categories and Unassigned cases.
-- [ ] Measure the new review-only baseline under current definitions; do not reuse earlier fallback accuracy claims.
-- [ ] Complete and document the applicable same-corpus LDA comparison.
-- [ ] Complete controlled live database/dashboard demonstration.
-- [ ] Record acceptance criteria, limitations and explicit activation decision.
+## Acceptance work remaining
 
-## Optional later work
+- [ ] Full pinned-Qwen smoke inference with the portable runtime on adequate hardware. The Mac has 16 GB RAM; float32 weights alone approach that capacity.
+- [ ] Linux container build/run and model-ready smoke check. Docker is not installed here.
+- [ ] Measure peak memory and latency on representative long and short articles.
+- [ ] Evaluate independent reference articles under this new prompt/runtime; do not inherit Mac MLX development scores.
+- [ ] Verify a new semantic result through live Supabase and dashboard filtering/counts after runtime smoke acceptance. Earlier live checks used the historical BERTopic path.
+- [ ] Record the release/activation acceptance decision with known accuracy limitations.
 
-- Review queue and approval UI. Suggestions are currently stored fields, not an operational human-review workflow.
-- Replacement reprocessing with version history and a clear dashboard selection policy. Existing storage preserves old article rows.
+## Later enhancements
+
+- Human review queue UI; review counts currently exist without such an interface.
+- Reprocessing with retained version history; existing insert-only behavior intentionally preserves older assignments.
+- Apply reviewed exclusion/copy manifests and repair extraction defects before future discovery training.
+
+Final local functional evidence: topic-agent-local-release.md. Upstream extraction work is assigned to another team member; do not modify that component as part of topic-agent work.
