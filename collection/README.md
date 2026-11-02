@@ -2,23 +2,15 @@
 
 **Owner:** Juan Reyes\
 **Consumers:** Orchestrator (Ravi), Analysis Agents, Security Subsystem\
-**Last updated:** October 8, 2026\
+**Last updated:** November 1, 2026\
 **Status:** Complete and tested in isolation. Guardian source + comment
 retrieval added. Ready for orchestration integration.
 
-## 0. Changelog since Oct 3, 2026
+## 0. Changelog since Oct 8, 2026
 
-- Added `guardian_fetcher.py` — Guardian Open Platform article source.
-- Added `guardian_comments.py` — comment retrieval via the Guardian
-  Discussion API.
-- Added two columns to `articles`: `guardian_discussion_key`,
-  `guardian_commentable`.
-- Added `comments` table.
-- **Pipeline reorder:** comments now run AFTER preprocess, gated on
-  `llm_relevant = true` AND `processing_status = 'success'`.
-- **Deprecated:** `ingest_reddit.py` and the Reddit corpus. Sponsor
-  ruled the social-media workaround out of scope (news sources only).
-  Reddit tables are retained but dormant — no runtime code reads them.
+- Executed a targeted SQL deletion of comments from irrelevant articles to
+clean up the `comments` table, since it will only add entries from articles
+that survive the article branch anyway (see **2.** below). 91% of comments were deleted.
 
 ## 1. Purpose
 
@@ -41,9 +33,9 @@ this order:
    the article branch (stages 1–5)
 
 Stage 3 is deliberately permissive (recall); stage 4 applies precision.
-Stage 5 gates on `llm_relevant = true`. Stage 6 gates on both
-`llm_relevant = true` AND `processing_status = 'success'` AND
-`guardian_commentable = true`.
+Stage 5 gates on `llm_relevant = TRUE`. Stage 6 gates on both
+`llm_relevant = TRUE` AND `processing_status = 'success'` AND
+`guardian_commentable = TRUE`.
 
 **Sequencing note:** comments run last, after preprocess. They attach
 to articles that are actually in the analysis corpus. Earlier versions
@@ -388,12 +380,12 @@ short body text.
   qualifying article are fetched, regardless of when they were posted
   relative to the article's publication.
 
-## 11. Current state (as of Oct 8, 2026)
-- Articles stored (post-dedup):     2,173
-- Keyword filter passed:            445
-- LLM verified relevant:            371
-- Preprocessed successfully:        429
+## 11. Current state (as of Nov 1, 2026)
+- Articles stored (post-dedup):     2,979
+- Keyword filter passed:            587
+- LLM verified relevant:            578
+- Preprocessed successfully:        508
 - Guardian articles:                262
 - Commentable Guardian articles:    21
-- Comments stored:                  29,658
+- Comments stored:                  ~~29,658~~ 2,592
 - Unique comment authors:           5,806
