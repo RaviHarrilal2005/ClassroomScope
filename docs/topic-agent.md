@@ -80,9 +80,10 @@ Language-model sources/tests were moved to ignored `review/archived-portable-lan
 - `topic_catalog.json`: provisional model checksum, mapping and labels.
 - `train_auto.py`, `benchmark_discovery.py`: candidate discovery and LDA comparison.
 - `assign.py`, `evaluate_active.py`: database-free dry-run/evaluation.
-- [Optional deployment instructions](../deploy/topic/README.md) (outside the required release scope).
 - [Validation record](topic-agent-validation.md) and [implementation checklist](topic-agent-implementation-checklist.md).
 
 ## Local baseline verification
 
 See [topic-agent-local-release.md](topic-agent-local-release.md) for final functional evidence and known limitations. The locally frozen baseline is functionally checked; five-category accuracy remains provisional. Collection/preprocessing changes are outside the topic-agent owner's scope.
+
+Cloud-only packaging was removed during final cleanup because deployment is not required. Direct local setup above remains supported.

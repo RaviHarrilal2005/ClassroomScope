@@ -33,3 +33,7 @@ See `topic-agent-design.md` for the agreed five-category design, student-only T0
 ## BERTopic-only cleanup
 
 Archived the optional portable language-model classifier, adapter and tests under ignored review/archived-portable-language-model-2026-11-01/. Removed their production selection paths and optional example settings. Historical Mac experiments remain local as requested. Removed three unactivated cluster-count candidate pickle binaries (1,325,545,303 bytes), retaining shared embeddings, scripts, corpus provenance, assignments, metrics, samples and reports. Active model and database were not changed. Deployment files, migrations, current documentation and the model required for BERTopic were retained.
+
+## Local-only scope cleanup
+
+Removed `.dockerignore`, `backend/requirements-topic-cloud.txt`, and the three files in `deploy/topic/` because cloud packaging is outside the required scope. Updated current guide links. Preserved the primary backend requirements, active model, tests, migrations, release documentation and all local experiment archives.
