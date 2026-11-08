@@ -141,7 +141,7 @@ def test_sentiment_runs_roberta_with_vader_behind_it(monkeypatch):
     libraries_installed(monkeypatch, True)
     registry = build_default_registry(live=True)
     primary, fallback = registry.get(SENTIMENT), registry.get_fallback(SENTIMENT)
-    assert isinstance(primary, SentimentAgent) and primary.method == "roberta_news"
+    assert isinstance(primary, SentimentAgent) and primary.method == "roberta_news_v2"
     assert isinstance(fallback, SentimentAgent) and fallback.method == "vader"
 
 

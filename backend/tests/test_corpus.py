@@ -89,7 +89,7 @@ def test_the_newest_topic_row_wins_and_no_stable_id_means_unassigned():
     assert (by_id[2]["stable_topic_id"], by_id[2]["topic"]) == (None, None)
 
 
-def sentiment(article_id, label, method="roberta_news", id=None):
+def sentiment(article_id, label, method="roberta_news_v2", id=None):
     return {"id": id or article_id, "article_id": article_id, "sentiment": label, "method": method}
 
 

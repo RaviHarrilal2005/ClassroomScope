@@ -110,14 +110,14 @@ def topic_facet(client: Any) -> Dict[str, Any]:
 def sentiment_facet(client: Any) -> Dict[str, Any]:
     """
     The /results sentiment share, worked out from the raw tables: one
-    sentiment per analysable article, its roberta_news row before any
+    sentiment per analysable article, its roberta_news_v2 row before any
     other method, then the newest.
     """
     best: Dict[int, Dict[str, Any]] = {}
     for row in page_all(lambda: client.table("sentiment_results")
                         .select("id, article_id, sentiment, method").order("id")):
         current = best.get(row["article_id"])
-        if current is None or (row["method"] == "roberta_news") >= (current["method"] == "roberta_news"):
+        if current is None or (row["method"] == "roberta_news_v2") >= (current["method"] == "roberta_news_v2"):
             best[row["article_id"]] = row
     labels = [best[a]["sentiment"] for a in corpus_ids(client) if a in best]
     labels = [label for label in labels if label in ("positive", "neutral", "negative")]

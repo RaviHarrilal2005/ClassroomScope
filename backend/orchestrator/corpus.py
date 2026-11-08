@@ -14,7 +14,7 @@ Merge rules, one value per article:
     the newest `classified_at`.
   * topic: the newest topic_results row. No row, or no stable topic ID,
     means unassigned.
-  * sentiment: `roberta_news` beats any other method; ties go to the
+  * sentiment: `roberta_news_v2` beats any other method; ties go to the
     newest row. No row means no sentiment (None).
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ EXACT_FILTERS = {"source_type": "source_type", "stakeholder": "stakeholder", "to
 ARTICLE_FIELDS = ("id", "title", "url", "source", "published_date", "source_type",
                   "stakeholder", "stable_topic_id", "topic", "sentiment", "snippet")
 BASELINE_CLASSIFIER = "baseline_keyword"
-PREFERRED_SENTIMENT_METHOD = "roberta_news"
+PREFERRED_SENTIMENT_METHOD = "roberta_news_v2"
 SNIPPET_CONTEXT = 80
 CACHE_SECONDS = 60
 COMMENT_LIMIT = 50
