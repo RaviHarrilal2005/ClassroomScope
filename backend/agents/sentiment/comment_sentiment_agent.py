@@ -31,13 +31,17 @@ first time it is needed.
 """
 import os
 import sys
+from typing import TYPE_CHECKING
 
-try:
+if TYPE_CHECKING:
     from orchestrator.agents import Agent
-except ImportError:
-    # running this file by itself, outside the team's repo: a plain stand-in
-    class Agent:
-        pass
+else:
+    try:
+        from orchestrator.agents import Agent
+    except ImportError:
+        # running this file by itself, outside the team's repo: a plain stand-in
+        class Agent:
+            pass
 
 MODEL_NAME = "j-hartmann/sentiment-roberta-large-english-3-classes"
 METHOD = "hartmann_3"
@@ -111,7 +115,7 @@ def _sanity_check(classifier):
         if error:
             return False, "model error: " + error
         if label != wanted:
-            return False, "sanity check gave '" + label + "' for '" + text + "' (expected '" + wanted + "')"
+            return False, "sanity check gave '" + str(label) + "' for '" + text + "' (expected '" + wanted + "')"
     return True, "ok"
 
 
