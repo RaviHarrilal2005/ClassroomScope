@@ -20,6 +20,7 @@ By itself (from the backend folder, or with the run button):
     python -m agents.sentiment.sentiment_agent --test 3   # labels 3 articles and prints them, saves nothing
     python -m agents.sentiment.sentiment_agent --save     # labels articles with no result yet and saves them
     add --vader to any of these to use the VADER baseline instead
+    add --v2 to any of these to score with the new version and save as "roberta_news_v2"
 
 Nothing is loaded or read when this file is imported. The models load
 the first time they are needed.
@@ -27,19 +28,30 @@ the first time they are needed.
 import re
 import sys
 
-from orchestrator.agents import Agent
+try:
+    from orchestrator.agents import Agent
+except ImportError:
+    # running this file by itself, outside the team's repo: a plain stand-in
+    class Agent:
+        pass
 
 MODEL_NAME = "Jean-Baptiste/roberta-large-financial-news-sentiment-en"
-METHODS = ("roberta_news", "vader")
+# "roberta_news_v2" is the same model, run with the headline and sentence-aligned
+# chunks. It is saved under its own name so the older "roberta_news" rows stay untouched.
+METHODS = ("roberta_news", "roberta_news_v2", "vader")
 
-# RoBERTa reads at most 512 tokens, so articles are split into chunks of 500
-CHUNK_SIZE = 500
+# RoBERTa reads at most 512 tokens, so articles are split into chunks of at
+# most 480 (a little under the limit, because the model adds 2 special tokens)
+CHUNK_SIZE = 480
 
 # how many rows to read or write in one request
 BATCH = 200
 
 # decimal places for the confidence score that gets saved
 DECIMALS = 3
+
+# results below this confidence are less reliable (counted in the summary)
+LOW_CONFIDENCE = 0.6
 
 # the models are loaded once, the first time they are needed
 _sentiment_model = None
@@ -69,29 +81,91 @@ def load_vader():
     return _vader
 
 
-def analyze_sentiment(text):
-    """RoBERTa sentiment for one article. Returns (label, confidence, scores)."""
+def split_into_chunks(text, count_tokens, chunk_size=CHUNK_SIZE):
+    """
+    Cut an article into chunks that end at sentence boundaries, each at
+    most chunk_size tokens, so the whole article is read and no sentence
+    is cut in half. A single sentence longer than chunk_size is cut by words.
+
+    count_tokens is a function that returns the token count of a string.
+    Returns a list of (chunk_text, token_count).
+    """
+    # sentences end at . ! ? followed by a space, or at a new line
+    pieces = re.split(r"(?<=[.!?])\s+|\n+", text)
+    pieces = [p.strip() for p in pieces if p and p.strip() != ""]
+
+    chunks = []
+    current = []
+    current_length = 0
+
+    def close_chunk():
+        nonlocal current, current_length
+        if current:
+            chunks.append((" ".join(current), current_length))
+        current = []
+        current_length = 0
+
+    for piece in pieces:
+        length = count_tokens(piece)
+
+        if length > chunk_size:
+            # one huge "sentence" (a table, a list with no full stops): cut it by words
+            close_chunk()
+            words = piece.split()
+            part = []
+            for word in words:
+                trial = " ".join(part + [word])
+                if part and count_tokens(trial) > chunk_size:
+                    chunks.append((" ".join(part), count_tokens(" ".join(part))))
+                    part = [word]
+                else:
+                    part.append(word)
+            if part:
+                chunks.append((" ".join(part), count_tokens(" ".join(part))))
+            continue
+
+        if current_length + length > chunk_size:
+            close_chunk()
+        current.append(piece)
+        current_length += length
+
+    close_chunk()
+    return chunks
+
+
+def analyze_sentiment(text, title=None):
+    """
+    RoBERTa sentiment for one article. Returns (label, confidence, scores).
+
+    The headline is put in front of the article text, because in news the
+    headline carries a lot of the tone. The whole article is read: it is cut
+    into sentence-aligned chunks, every chunk is scored, and the chunk scores
+    are averaged with longer chunks counting more.
+    """
     # stop if the article has no text (dividing by 0 chunks would crash)
     if not text or text.strip() == "":
         raise ValueError("Article has no text to analyze")
 
     sentiment_model, tokenizer = load_roberta()
 
-    tokens = tokenizer.encode(text, add_special_tokens=False)
+    if title and title.strip() != "":
+        text = title.strip() + ". " + text.strip()
 
-    chunks = []
-    for i in range(0, len(tokens), CHUNK_SIZE):
-        chunk_tokens = tokens[i:i + CHUNK_SIZE]
-        chunk_text = tokenizer.decode(chunk_tokens, skip_special_tokens=True)
-        # save the chunk text and how long it is
-        chunks.append((chunk_text, len(chunk_tokens)))
+    def count_tokens(piece):
+        return len(tokenizer.encode(piece, add_special_tokens=False))
+
+    chunks = split_into_chunks(text, count_tokens)
+    if not chunks:
+        raise ValueError("Article has no text to analyze")
 
     scores = {"positive": 0, "neutral": 0, "negative": 0}
     total_tokens = 0
 
-    for chunk_text, chunk_length in chunks:
-        results = sentiment_model(chunk_text, top_k=None, truncation=True)
+    # score all chunks of the article together (faster than one at a time)
+    chunk_texts = [chunk_text for chunk_text, chunk_length in chunks]
+    all_results = sentiment_model(chunk_texts, top_k=None, truncation=True, batch_size=16)
 
+    for (chunk_text, chunk_length), results in zip(chunks, all_results):
         for result in results:
             label = result["label"].lower()
             if label not in scores:
@@ -110,6 +184,7 @@ def analyze_sentiment(text):
     final_sentiment = max(scores, key=lambda label: scores[label])
     confidence = scores[final_sentiment]
 
+    scores["chunks"] = len(chunks)
     return final_sentiment, confidence, scores
 
 
@@ -122,8 +197,13 @@ def vader_sentiment(text):
 
     vader = load_vader()
 
-    sentences = re.split(r"[.!?]+", text)
+    # split after . ! or ? only when a space follows, so "3.5" or "U.S.A" stay whole
+    sentences = re.split(r"(?<=[.!?])\s+", text)
     sentences = [s for s in sentences if s.strip() != ""]
+
+    # stop if there are no sentences (dividing by 0 would crash)
+    if len(sentences) == 0:
+        raise ValueError("Article has no text to analyze")
 
     total = 0
     for sentence in sentences:
@@ -142,10 +222,10 @@ def vader_sentiment(text):
     return label, average
 
 
-def label_article(text, method):
+def label_article(text, method, title=None):
     """Returns (sentiment, confidence) for one article with the chosen method."""
-    if method == "roberta_news":
-        label, confidence, scores = analyze_sentiment(text)
+    if method in ("roberta_news", "roberta_news_v2"):
+        label, confidence, scores = analyze_sentiment(text, title)
         return label, float(confidence)
 
     # VADER has no confidence score, so the size of its score is used instead
@@ -256,10 +336,24 @@ def find_done(database, article_ids, method):
 
 
 def save_results(database, rows):
-    """Add new rows to sentiment_results. Never changes or deletes existing rows."""
-    for start in range(0, len(rows), BATCH):
-        database.table("sentiment_results").insert(rows[start:start + BATCH]).execute()
-    return len(rows)
+    """
+    Add new rows to sentiment_results. Never changes or deletes existing rows.
+
+    Checks again right before saving, so two runs at the same time
+    do not write the same article twice.
+    """
+    by_method = {}
+    for row in rows:
+        by_method.setdefault(row["method"], []).append(row)
+
+    new_rows = []
+    for method, group in by_method.items():
+        done = find_done(database, [row["article_id"] for row in group], method)
+        new_rows.extend(row for row in group if row["article_id"] not in done)
+
+    for start in range(0, len(new_rows), BATCH):
+        database.table("sentiment_results").insert(new_rows[start:start + BATCH]).execute()
+    return len(new_rows)
 
 
 # ---------------- the agent ----------------
@@ -297,7 +391,7 @@ def run_sentiment(article_ids=None, method="roberta_news", save=True, limit=None
     # the pipeline gave no articles: nothing to do, and no need to load the model
     if article_ids is not None and len(article_ids) == 0:
         return {"processed": 0, "analyzed": 0, "skipped_existing": 0,
-                "failed": 0, "failed_ids": [], "method": method}
+                "failed": 0, "failed_ids": [], "low_confidence": 0, "method": method}
 
     database = get_database()
 
@@ -316,7 +410,7 @@ def run_sentiment(article_ids=None, method="roberta_news", save=True, limit=None
     # load the model before the loop, so a model that can't load
     # stops the run with a clear error instead of failing every article
     if todo:
-        if method == "roberta_news":
+        if method in ("roberta_news", "roberta_news_v2"):
             load_roberta()
         else:
             load_vader()
@@ -326,7 +420,7 @@ def run_sentiment(article_ids=None, method="roberta_news", save=True, limit=None
 
     for number, article in enumerate(todo, start=1):
         try:
-            sentiment, confidence = label_article(article["clean_content"], method)
+            sentiment, confidence = label_article(article["clean_content"], method, article.get("title"))
         except Exception as error:
             # a problem with this one article: skip it and keep going
             failed.append((article["id"], str(error)))
@@ -358,13 +452,18 @@ def run_sentiment(article_ids=None, method="roberta_news", save=True, limit=None
         "skipped_existing": len(done),
         "failed": len(failed),
         "failed_ids": [article_id for article_id, reason in failed],
+        "low_confidence": sum(1 for row in rows if row["confidence"] < LOW_CONFIDENCE),
         "method": method
     }
 
 
 if __name__ == "__main__":
     arguments = sys.argv[1:]
-    method = "vader" if "--vader" in arguments else "roberta_news"
+    method = "roberta_news"
+    if "--vader" in arguments:
+        method = "vader"
+    elif "--v2" in arguments:
+        method = "roberta_news_v2"
 
     if "--test" in arguments:
         count = int(arguments[arguments.index("--test") + 1])
