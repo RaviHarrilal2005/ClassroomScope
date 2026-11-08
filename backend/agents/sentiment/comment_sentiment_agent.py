@@ -257,8 +257,10 @@ def find_done(database, comment_ids, method=METHOD):
             .eq("method", method)
             .execute()
         )
+        # the results table stores comment_id as bigint, comments as text:
+        # compare as strings, or nothing ever counts as done
         for row in response.data or []:
-            done.add(row["comment_id"])
+            done.add(str(row["comment_id"]))
     return done
 
 
