@@ -130,7 +130,7 @@ def build_default_registry(live: Optional[bool] = None, **collection_options) ->
         from agents.sentiment.sentiment_agent import SentimentAgent
 
         logger.info("Registry: transformers and vaderSentiment found, using the sentiment agent")
-        registry.register(SENTIMENT, SentimentAgent(), fallback=SentimentAgent("vader"))
+        registry.register(SENTIMENT, SentimentAgent("roberta_news_v2"), fallback=SentimentAgent("vader"))
     else:
         registry.register(SENTIMENT, agents.stub_analysis(SENTIMENT),
                           fallback=agents.stub_fallback(SENTIMENT))
