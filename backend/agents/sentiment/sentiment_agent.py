@@ -27,13 +27,17 @@ the first time they are needed.
 """
 import re
 import sys
+from typing import TYPE_CHECKING, cast
 
-try:
+if TYPE_CHECKING:
     from orchestrator.agents import Agent
-except ImportError:
-    # running this file by itself, outside the team's repo: a plain stand-in
-    class Agent:
-        pass
+else:
+    try:
+        from orchestrator.agents import Agent
+    except ImportError:
+        # running this file by itself, outside the team's repo: a plain stand-in
+        class Agent:
+            pass
 
 MODEL_NAME = "Jean-Baptiste/roberta-large-financial-news-sentiment-en"
 # "roberta_news_v2" is the same model, run with the headline and sentence-aligned
@@ -177,7 +181,9 @@ def analyze_sentiment(text, title=None, method="roberta_news_v2"):
 
     # score all chunks of the article together (faster than one at a time)
     chunk_texts = [chunk_text for chunk_text, chunk_length in chunks]
-    all_results = sentiment_model(chunk_texts, top_k=None, truncation=True, batch_size=16)
+    # with top_k=None it returns one list of label scores per chunk; transformers'
+    # type hints say a flat list, so tell the type checker not to trust them
+    all_results = cast(list, sentiment_model(chunk_texts, top_k=None, truncation=True, batch_size=16))
 
     for (chunk_text, chunk_length), results in zip(chunks, all_results):
         for result in results:

@@ -12,6 +12,7 @@ class ResultsTable:
 
     def __init__(self, ids):
         self.ids = ids
+        self.inserted = []
 
     def table(self, name):
         return self
@@ -26,6 +27,10 @@ class ResultsTable:
     def eq(self, column, value):
         return self
 
+    def insert(self, rows):
+        self.inserted.extend(rows)
+        return self
+
     def execute(self):
         return SimpleNamespace(data=[{"comment_id": i} for i in self.ids if i in self.wanted])
 
@@ -37,9 +42,7 @@ def test_done_ids_match_the_string_ids_comments_use():
 
 def test_save_results_skips_comments_already_saved():
     database = ResultsTable([160745544])
-    inserted = []
-    database.insert = lambda rows: inserted.extend(rows) or database
     row = {"comment_id": "160745544", "article_id": 5265, "sentiment": "neutral",
            "confidence": 0.9, "method": agent.METHOD}
     assert agent.save_results(database, [row]) == 0
-    assert inserted == []
+    assert database.inserted == []
