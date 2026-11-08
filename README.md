@@ -33,11 +33,10 @@ building out the real views.
 
 ## What's NOT built yet
 
-- ExportControls — see design doc Section 2 for what it needs to do
 - Auth / session context (SS-5 login) — apiClient has TODOs where the
   token will attach
-- Charts for the sentiment breakdowns — `/results` carries them (by
-  month, topic and stakeholder), but only the overall donut is drawn
+- A chart of sentiment by month — `/results` carries it; the stakeholder
+  and topic breakdowns are drawn
 
 ## Pipeline coordinator (in progress)
 
@@ -131,6 +130,7 @@ The latest report: [docs/testing/e2e-test-report.md](docs/testing/e2e-test-repor
 cd frontend
 npm install
 npm run dev             # serves http://localhost:5173
+npm test                # the CSV export's tests (Node's built-in runner)
 ```
 
 Open `http://localhost:5173` with `python app.py` running — you should
@@ -164,7 +164,8 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | Redesign | Topic chart labels wrap to two lines at most | Labels over ~56 characters clip | Measure text, or wrap to N lines |
 | Pipeline runs | All 20 recent runs listed; Start a run and Run on 5 stored articles have no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
 | Pipeline runs | Run on stored articles always takes the 5 oldest analysis-ready articles (`BACKLOG_RUN_SIZE`) | Re-analyses the same 5 every time; can't pick which or how many | Take a size, or specific article IDs, in the request |
-| Frontend | No frontend tests | Regressions caught by eye | Vitest + Testing Library |
+| Export | Article list only, the columns the table has; built in the browser | No full text, comments, per-classifier results, column picker, or other formats; nothing ties a file to a pipeline run | Each is an add-on with no schema change, except export-by-run (`run_id` on the results tables, open question 3 in `docs/pipeline-coordinator.md`) |
+| Frontend | Only `src/csv.js` has tests (`npm test`, Node's built-in runner); no component tests | UI regressions caught by eye | Vitest + Testing Library |
 | End-to-end checks (`backend/e2e`) | Run against the team's shared Supabase project: 5 stored articles per run, real collection only with `--collect` | Every run writes to team data: run history, re-written classifications, sometimes new articles | A separate test database, selected with `E2E_ENV_FILE=.env.test` |
 | End-to-end checks (`backend/e2e`) | Dashboard checks find elements by their visible text and layout | A redesign that changes that text breaks D1–D3. The October redesign did, and they were rewritten for it | `data-testid` attributes on the elements the tests use |
 
@@ -184,8 +185,7 @@ already flowing through `apiClient.js` → `ViewStateContext.jsx` →
 `DashboardShell.jsx`; new components should plug into that same state
 layer rather than fetching independently.
 
-**Components in `frontend/src/components/`** (all built except
-ExportControls):
+**Components in `frontend/src/components/`** (all built):
 
 1. **FilterPanel** — built (MVP, see the table above): date range,
    source type, stakeholder, topic and keyword search, with filter
@@ -199,9 +199,11 @@ ExportControls):
    grey / red (red and green blur together for red-green colour
    blindness). The article list stays a table: a chart of a handful of
    rows would present a sample as a distribution.
-3. **ExportControls** — UI for exporting the current view/results
-   (format TBD — propose an approach if it's not obvious from the
-   design doc).
+3. **Export** — built (MVP, see the table above): an **Export CSV**
+   button on the article table downloads exactly the rows it shows, one
+   per article, built in the browser by `src/csv.js` (no endpoint).
+   Formula-looking cells get a leading apostrophe; the file opens as
+   UTF-8 in Excel and reads cleanly in R or pandas.
 4. **AdminConsole** — built: the "Pipeline runs" tab, separate from
    the main dashboard.
 

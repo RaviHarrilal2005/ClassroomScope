@@ -11,7 +11,8 @@
  * and the sentiment share, its breakdowns and the headline's picks
  * (agents/aggregation/compute.py).
  *
- * NOT built yet: ExportControls, login. See design doc Section 2.
+ * NOT built yet: login. See design doc Section 2. Export is the article
+ * table's Export CSV button (src/csv.js).
  */
 import { useState } from "react";
 import { useViewState } from "../state/ViewStateContext";
