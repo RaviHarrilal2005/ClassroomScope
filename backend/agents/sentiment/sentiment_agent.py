@@ -44,6 +44,9 @@ METHODS = ("roberta_news", "roberta_news_v2", "vader")
 # most 480 (a little under the limit, because the model adds 2 special tokens)
 CHUNK_SIZE = 480
 
+# the original "roberta_news" method cuts fixed 500-token windows
+ORIGINAL_CHUNK_SIZE = 500
+
 # how many rows to read or write in one request
 BATCH = 200
 
@@ -133,14 +136,18 @@ def split_into_chunks(text, count_tokens, chunk_size=CHUNK_SIZE):
     return chunks
 
 
-def analyze_sentiment(text, title=None):
+def analyze_sentiment(text, title=None, method="roberta_news_v2"):
     """
     RoBERTa sentiment for one article. Returns (label, confidence, scores).
 
-    The headline is put in front of the article text, because in news the
-    headline carries a lot of the tone. The whole article is read: it is cut
-    into sentence-aligned chunks, every chunk is scored, and the chunk scores
-    are averaged with longer chunks counting more.
+    roberta_news_v2: the headline is put in front of the article text,
+    because in news the headline carries a lot of the tone, and the article
+    is cut into sentence-aligned chunks.
+    roberta_news: the original way, kept so its rows stay comparable: no
+    headline, and fixed windows of ORIGINAL_CHUNK_SIZE tokens.
+
+    Either way the whole article is read, every chunk is scored, and the
+    chunk scores are averaged with longer chunks counting more.
     """
     # stop if the article has no text (dividing by 0 chunks would crash)
     if not text or text.strip() == "":
@@ -148,13 +155,20 @@ def analyze_sentiment(text, title=None):
 
     sentiment_model, tokenizer = load_roberta()
 
-    if title and title.strip() != "":
-        text = title.strip() + ". " + text.strip()
+    if method == "roberta_news_v2":
+        if title and title.strip() != "":
+            text = title.strip() + ". " + text.strip()
 
-    def count_tokens(piece):
-        return len(tokenizer.encode(piece, add_special_tokens=False))
+        def count_tokens(piece):
+            return len(tokenizer.encode(piece, add_special_tokens=False))
 
-    chunks = split_into_chunks(text, count_tokens)
+        chunks = split_into_chunks(text, count_tokens)
+    else:
+        tokens = tokenizer.encode(text, add_special_tokens=False)
+        chunks = []
+        for i in range(0, len(tokens), ORIGINAL_CHUNK_SIZE):
+            chunk_tokens = tokens[i:i + ORIGINAL_CHUNK_SIZE]
+            chunks.append((tokenizer.decode(chunk_tokens, skip_special_tokens=True), len(chunk_tokens)))
     if not chunks:
         raise ValueError("Article has no text to analyze")
 
@@ -225,7 +239,7 @@ def vader_sentiment(text):
 def label_article(text, method, title=None):
     """Returns (sentiment, confidence) for one article with the chosen method."""
     if method in ("roberta_news", "roberta_news_v2"):
-        label, confidence, scores = analyze_sentiment(text, title)
+        label, confidence, scores = analyze_sentiment(text, title, method)
         return label, float(confidence)
 
     # VADER has no confidence score, so the size of its score is used instead
