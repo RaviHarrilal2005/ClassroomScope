@@ -11,7 +11,11 @@ from types import SimpleNamespace
 
 class FakeQuery:
     def __init__(self, client, rows):
-        self.client, self.rows, self.window, self.counting = client, list(rows), None, False
+        self.client, self.source, self.rows, self.window, self.counting = client, rows, list(rows), None, False
+
+    def insert(self, rows):
+        self.source.extend(rows)
+        return self
 
     def select(self, columns, count=None):
         self.counting = count == "exact"
@@ -59,4 +63,4 @@ class FakeSupabase:
 
     def table(self, name):
         self.opened.append(name)
-        return FakeQuery(self, self.tables.get(name, []))
+        return FakeQuery(self, self.tables.setdefault(name, []))

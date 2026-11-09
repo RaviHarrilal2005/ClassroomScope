@@ -211,7 +211,7 @@ class PipelineCoordinator:
         return self._finish(run_id, RunStatus.COMPLETED, summary)
 
     def _run_analysis(self, stages: Dict[str, StageRecord], ctx: RunContext) -> Dict[str, Optional[Output]]:
-        """Run the four analysis stages at the same time and wait for all of them."""
+        """Run the analysis stages at the same time and wait for all of them."""
         outcomes: Dict[str, Optional[Output]] = {}
         with ThreadPoolExecutor(
             max_workers=len(ANALYSIS_STAGES),

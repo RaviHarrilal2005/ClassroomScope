@@ -1,12 +1,13 @@
 """
 The analysable corpus for the dashboard: each article with one source
-type, stakeholder, topic and sentiment, filtered and searched per request.
+type, stakeholder, topic, sentiment and stance, and the sentiment counts
+of its readers' comments, filtered and searched per request.
 
 MVP (README, "MVP features — come back to these"): each corpus refresh
-reads four tables (articles, classification_results, topic_results,
-sentiment_results) and filters in Python, behind a 60-second cache; a search also reads
-`comments`. Fine at a few
-hundred articles. The aggregation snapshot, or a Postgres view, should
+reads six tables (articles, classification_results, topic_results,
+sentiment_results, stance_results, comment_sentiment_results) and filters
+in Python, behind a 60-second cache; a search also reads `comments`. Fine
+at a few hundred articles and a few thousand comments. The aggregation snapshot, or a Postgres view, should
 replace it once the corpus grows or the numbers must match a run.
 
 Merge rules, one value per article:
@@ -16,6 +17,10 @@ Merge rules, one value per article:
     means unassigned.
   * sentiment: `roberta_news_v2` beats any other method; ties go to the
     newest row. No row means no sentiment (None).
+  * stance: the newest stance_results row. No row means None.
+  * comment_sentiment: {positive, neutral, negative} counts of the
+    article's comments labelled by COMMENT_SENTIMENT_METHOD, or None when
+    it has none. Only screened, unquarantined comments are ever labelled.
 """
 from __future__ import annotations
 
@@ -39,9 +44,10 @@ FILTER_KEYS = ("from", "to", "source_type", "stakeholder", "topic", "q")
 EXACT_FILTERS = {"source_type": "source_type", "stakeholder": "stakeholder", "topic": "stable_topic_id"}
 # What /results sends per article. clean_content stays on the server.
 ARTICLE_FIELDS = ("id", "title", "url", "source", "published_date", "source_type",
-                  "stakeholder", "stable_topic_id", "topic", "sentiment", "snippet")
+                  "stakeholder", "stable_topic_id", "topic", "sentiment", "stance", "snippet")
 BASELINE_CLASSIFIER = "baseline_keyword"
 PREFERRED_SENTIMENT_METHOD = "roberta_news_v2"
+COMMENT_SENTIMENT_METHOD = "hartmann_3"  # agents/sentiment/comment_sentiment_agent.py
 SNIPPET_CONTEXT = 80
 CACHE_SECONDS = 60
 COMMENT_LIMIT = 50
@@ -75,7 +81,7 @@ def _method_rank(row: Mapping[str, Any]) -> int:
 
 
 def read_corpus(client: Any) -> List[Article]:
-    """The analysable articles, each with source_type, stakeholder, stable_topic_id and topic."""
+    """The analysable articles, each with its labels merged in (see the merge rules above)."""
     articles = page_all(lambda: client.table("articles")
                         .select("id, title, source, url, published_date, clean_content")
                         .eq("llm_relevant", True).eq("processing_status", "success").order("id"))
@@ -86,6 +92,11 @@ def read_corpus(client: Any) -> List[Article]:
                           .select("article_id, stable_topic_id, topic").order("id"))
     sentiment_rows = page_all(lambda: client.table("sentiment_results")
                               .select("id, article_id, sentiment, method").order("id"))
+    stance_rows = page_all(lambda: client.table("stance_results")
+                           .select("article_id, stance").order("id"))
+    comment_rows = page_all(lambda: client.table("comment_sentiment_results")
+                            .select("article_id, sentiment")
+                            .eq("method", COMMENT_SENTIMENT_METHOD).order("id"))
 
     best: Dict[Any, Mapping[str, Any]] = {}
     for row in classifications:
@@ -99,6 +110,12 @@ def read_corpus(client: Any) -> List[Article]:
         current = sentiment.get(row["article_id"])
         if current is None or _method_rank(row) >= _method_rank(current):
             sentiment[row["article_id"]] = row
+    newest_stance = {row["article_id"]: row["stance"] for row in stance_rows}  # ordered by id, so the last wins
+    comment_counts: Dict[Any, Dict[str, int]] = {}
+    for row in comment_rows:
+        counts = comment_counts.setdefault(row["article_id"], {"positive": 0, "neutral": 0, "negative": 0})
+        if row["sentiment"] in counts:
+            counts[row["sentiment"]] += 1
 
     corpus = []
     for article in articles:
@@ -113,6 +130,8 @@ def read_corpus(client: Any) -> List[Article]:
             "stable_topic_id": topic_id,
             "topic": (topic.get("topic") or topic_id) if topic_id else None,
             "sentiment": sentiment.get(article["id"], {}).get("sentiment"),
+            "stance": newest_stance.get(article["id"]),
+            "comment_sentiment": comment_counts.get(article["id"]),
         })
     return corpus
 
@@ -265,6 +284,8 @@ def search_comments(client: Any, articles: List[Article], q: str,
                     limit: int = COMMENT_LIMIT) -> Dict[str, Any]:
     """
     Comments on `articles` containing `q`, ignoring case, newest first.
+    Only comments security has passed: unscreened ones may not have been
+    checked yet, and quarantined ones failed the check.
 
     `total` counts every match; at most `limit` come back. PostgREST reads
     `*` in a pattern as a wildcard and has no escape for it, so a `*` in
@@ -277,6 +298,8 @@ def search_comments(client: Any, articles: List[Article], q: str,
     response = (client.table("comments")
                 .select("comment_id, article_id, body_text, created_at, recommendation_count", count="exact")
                 .in_("article_id", sorted(titles))
+                .eq("screened", True)
+                .eq("quarantined", False)
                 .ilike("body_text", f"%{escape_like(q)}%")
                 .order("created_at", desc=True)
                 .limit(limit)

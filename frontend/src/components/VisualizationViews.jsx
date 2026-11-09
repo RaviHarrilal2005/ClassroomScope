@@ -25,6 +25,16 @@ const SENTIMENTS = [
   { field: "negative", name: "Negative", fill: RED.fg, ink: "#fff" },
 ];
 
+// Stance uses the same three colours: for reads like positive, against like negative.
+export const STANCES = [
+  { field: "favor", name: "For", fill: SENTIMENTS[0].fill },
+  { field: "neutral", name: "Neutral", fill: SENTIMENTS[1].fill },
+  { field: "against", name: "Against", fill: SENTIMENTS[2].fill },
+];
+
+/** "favor" -> "For": the API sends the SemEval labels, the page says them plainly. */
+export const stanceName = (stance) => STANCES.find((s) => s.field === stance)?.name ?? "—";
+
 // Mirrors MIN_ARTICLES_TO_NAME in agents/aggregation/compute.py: rows
 // smaller than this are faded, as the headline never names them.
 export const MIN_ARTICLES_TO_NAME = 20;
@@ -33,12 +43,13 @@ export const MIN_ARTICLES_TO_NAME = 20;
 export const percent = (share) => `${(share * 100).toFixed(0)}%`;
 
 /**
- * Positive / neutral / negative shares (0–1) as a donut, each slice labelled.
+ * Shares (0–1) as a donut, each slice labelled: positive / neutral /
+ * negative by default, or the `slices` given (STANCES).
  * A 0% share gets no slice: Recharts still labels an empty slice, and two of
  * them land on the same spot, unreadable.
  */
-export function SentimentDonut({ distribution }) {
-  const data = SENTIMENTS.map(({ field, name, fill }) => ({
+export function SentimentDonut({ distribution, slices = SENTIMENTS }) {
+  const data = slices.map(({ field, name, fill }) => ({
     name,
     value: distribution[field],
     fill,

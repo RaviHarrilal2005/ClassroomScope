@@ -110,7 +110,7 @@ def stage_from_row(row: Dict[str, Any]) -> StageRecord:
 
 class SupabaseRunStore(RunStore):
     """
-    Thread-safe, like InMemoryRunStore: the four analysis stages update
+    Thread-safe, like InMemoryRunStore: the analysis stages update
     their rows concurrently (coordinator.py runs them in a thread pool)
     and the supabase-py client underneath is one HTTP connection that
     cannot be shared across threads. Without this lock the parallel

@@ -57,7 +57,7 @@ def check_fields(fields: dict, allowed: set, table: str) -> None:
 
 
 class InMemoryRunStore(RunStore):
-    """Thread-safe: the four analysis stages update their rows concurrently."""
+    """Thread-safe: the analysis stages update their rows concurrently."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()

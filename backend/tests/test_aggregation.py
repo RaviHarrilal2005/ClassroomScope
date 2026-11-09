@@ -91,3 +91,36 @@ def test_undetermined_is_never_named_most_negative():
 def test_no_most_negative_when_nothing_is_negative():
     arts = group("students", 0, 20) + group("educators", 0, 20, start=100)
     assert sentiment_figures(arts)["most_negative_stakeholder"] is None
+
+
+# --- stance and reader comments --------------------------------------------
+
+from agents.aggregation.compute import NO_COMMENTS, NO_STANCE, comment_figures, stance_figures
+
+
+def test_stance_shares_count_only_articles_with_a_known_stance():
+    arts = [{"stance": "favor"}, {"stance": "against"}, {"stance": "against"}, {"stance": None}, {"stance": "mixed"}]
+    result = stance_figures(arts)
+    assert result["stance_analysed"] == 3 and result["stance_reason"] is None
+    assert result["stance_distribution"] == {"favor": 1 / 3, "against": 2 / 3, "neutral": 0}
+
+
+def test_no_stance_gives_zero_shares_and_the_reason():
+    assert stance_figures([{"stance": None}]) == {
+        "stance_analysed": 0, "stance_distribution": {"favor": 0, "against": 0, "neutral": 0},
+        "stance_reason": NO_STANCE}
+
+
+def test_comment_shares_pool_every_comment_on_the_articles():
+    arts = [{"comment_sentiment": {"positive": 1, "neutral": 2, "negative": 5}},
+            {"comment_sentiment": {"positive": 1, "neutral": 0, "negative": 1}},
+            {"comment_sentiment": None}, {}]
+    result = comment_figures(arts)
+    assert result["comments_analysed"] == 10 and result["comment_articles"] == 2
+    assert result["comment_sentiment_distribution"] == {"positive": 0.2, "neutral": 0.2, "negative": 0.6}
+    assert result["comment_reason"] is None
+
+
+def test_articles_without_comments_give_zero_shares_and_the_reason():
+    result = comment_figures([{"comment_sentiment": None}])
+    assert result["comments_analysed"] == 0 and result["comment_reason"] == NO_COMMENTS

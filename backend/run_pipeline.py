@@ -15,10 +15,10 @@ Run the pipeline once from the terminal and print what happened.
                                                 downloaded
 
 By default this uses stub agents and in-memory storage, so it needs no
-database. --live swaps in the real collection, security and
-classification agents, and the topic agent where BERTopic and a saved
-topic model are installed; sentiment, stance and aggregation stay
-stubbed either way.
+database. --live swaps in the real agents where they can run here (see
+orchestrator/registry.py): topic needs BERTopic and a saved model,
+sentiment and comment sentiment need transformers, stance needs the
+Trussed LLM keys.
 
 Run status is always kept in memory here, never written to
 pipeline_runs — this is a demo harness, and a run from it should not
@@ -92,11 +92,11 @@ def main(argv=None) -> int:
     run = coordinator.run("manual")
 
     print(f"\nClassroomScope pipeline - run #{run.id} ({run.trigger_type})")
-    print(f"  {'Stage':<16}{'Status':<12}{'Attempts':<10}")
-    print(f"  {'-' * 15:<16}{'-' * 11:<12}{'-' * 8:<10}")
+    print(f"  {'Stage':<19}{'Status':<12}{'Attempts':<10}")
+    print(f"  {'-' * 17:<19}{'-' * 11:<12}{'-' * 8:<10}")
     for stage in coordinator.store.list_stages(run.id):
         attempts = str(stage.attempt) if stage.attempt else "-"
-        print(f"  {stage.stage_name:<16}{stage.status:<12}{attempts:<10}")
+        print(f"  {stage.stage_name:<19}{stage.status:<12}{attempts:<10}")
         if stage.error_detail:
             for line in textwrap.wrap(stage.error_detail, width=70):
                 print(f"      {line}")

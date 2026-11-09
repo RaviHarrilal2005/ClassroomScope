@@ -13,8 +13,8 @@
  *   * Only one run may be active. A second POST returns 409 with the
  *     active run's id; the store switches to that run rather than just
  *     showing an error.
- *   * Some stages can be stubs (stance everywhere; topic or sentiment
- *     where its model or libraries are missing). They succeed in about a
+ *   * Some stages can be stubs (topic, sentiment or comment sentiment
+ *     where its model or libraries are missing; stance without the LLM keys). They succeed in about a
  *     millisecond without doing anything, which looks identical to real
  *     work from here. The coordinator records per stage which agent ran
  *     and whether it was a stub (`agent`, `stub`), so the tag and the note

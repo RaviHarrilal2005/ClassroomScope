@@ -13,11 +13,13 @@ SENTIMENT = "sentiment"
 TOPIC = "topic"
 CLASSIFICATION = "classification"
 STANCE = "stance"
+COMMENT_SENTIMENT = "comment_sentiment"
 AGGREGATION = "aggregation"
 
-# The four analysis agents are independent of each other (none reads
-# another's output), so the coordinator runs them in parallel.
-ANALYSIS_STAGES = (SENTIMENT, TOPIC, CLASSIFICATION, STANCE)
+# The analysis agents are independent of each other (none reads another's
+# output), so the coordinator runs them in parallel. Comment sentiment
+# reads the comments security screened in the stage before.
+ANALYSIS_STAGES = (SENTIMENT, TOPIC, CLASSIFICATION, STANCE, COMMENT_SENTIMENT)
 
 # Full order: Collection -> Security -> Analysis (parallel) -> Aggregation
 PIPELINE_ORDER = (COLLECTION, SECURITY, *ANALYSIS_STAGES, AGGREGATION)

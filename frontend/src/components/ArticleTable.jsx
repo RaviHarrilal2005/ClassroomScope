@@ -10,6 +10,7 @@
 import { articlesCsv, download, exportFileName } from "../csv";
 import { useViewState } from "../state/ViewStateContext";
 import { Highlight, formatDate, humanize } from "./text";
+import { stanceName } from "./VisualizationViews";
 
 export default function ArticleTable() {
   const { results, filters } = useViewState();
@@ -49,6 +50,7 @@ export default function ArticleTable() {
                 <th scope="col">Stakeholder</th>
                 <th scope="col">Topic</th>
                 <th scope="col">Sentiment</th>
+                <th scope="col">Stance</th>
               </tr>
             </thead>
             <tbody>
@@ -77,6 +79,7 @@ export default function ArticleTable() {
                     <td>{humanize(a.stakeholder)}</td>
                     <td>{a.topic || "—"}</td>
                     <td>{humanize(a.sentiment)}</td>
+                    <td>{stanceName(a.stance)}</td>
                   </tr>
                 );
               })}

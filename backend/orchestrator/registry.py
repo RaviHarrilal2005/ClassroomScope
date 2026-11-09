@@ -24,6 +24,7 @@ from .stages import (
     AGGREGATION,
     CLASSIFICATION,
     COLLECTION,
+    COMMENT_SENTIMENT,
     SECURITY,
     SENTIMENT,
     STANCE,
@@ -125,16 +126,27 @@ def build_default_registry(live: Optional[bool] = None, **collection_options) ->
 
     # RoBERTa leads and VADER (a word list, no model download) covers for
     # it when the model cannot load. Without both libraries it stays
-    # stubbed, like topic. Stance has no implementation yet.
+    # stubbed, like topic; so does comment sentiment, a RoBERTa model too.
     if live and _sentiment_available():
+        from agents.sentiment.comment_sentiment_agent import CommentSentimentAgent
         from agents.sentiment.sentiment_agent import SentimentAgent
 
-        logger.info("Registry: transformers and vaderSentiment found, using the sentiment agent")
+        logger.info("Registry: transformers and vaderSentiment found, using the sentiment agents")
         registry.register(SENTIMENT, SentimentAgent("roberta_news_v2"), fallback=SentimentAgent("vader"))
+        registry.register(COMMENT_SENTIMENT, CommentSentimentAgent())
     else:
         registry.register(SENTIMENT, agents.stub_analysis(SENTIMENT),
                           fallback=agents.stub_fallback(SENTIMENT))
-    registry.register(STANCE, agents.stub_analysis(STANCE))
+        registry.register(COMMENT_SENTIMENT, agents.stub_analysis(COMMENT_SENTIMENT))
+
+    # Stance is an LLM call, like the classifier; with no LLM there is
+    # nothing to fall back to, so it stays stubbed.
+    if live and _luna_configured():
+        from agents.stance.stance_agent import StanceAgent
+
+        registry.register(STANCE, StanceAgent())
+    else:
+        registry.register(STANCE, agents.stub_analysis(STANCE))
     return registry
 
 
