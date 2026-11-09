@@ -24,6 +24,7 @@ By itself (from the backend folder):
     python -m agents.stance.stance_agent --test 5   # labels 5 articles and prints them, saves nothing
     python -m agents.stance.stance_agent --save     # labels every relevant article with no stance yet
 """
+import io
 import sys
 import time
 
@@ -164,6 +165,9 @@ class StanceAgent(Agent):
 
 
 if __name__ == "__main__":
+    # A Windows console can't show every character in a headline; a "?" beats a crash mid-run.
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(errors="replace")
     arguments = sys.argv[1:]
     if "--test" in arguments:
         count = int(arguments[arguments.index("--test") + 1])
