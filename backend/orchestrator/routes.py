@@ -49,6 +49,10 @@ def create_runs_blueprint(runner: BackgroundRunner) -> Blueprint:
                 "error": "A pipeline run is already in progress.",
                 "active_run_id": exc.run_id,
             }), 409
+        except Exception as exc:
+            # The run could not be created (e.g. the database rejected a stage
+            # row); the coordinator has logged it and marked the run failed.
+            return jsonify({"error": f"Could not start the run: {exc}"}), 500
         return jsonify(run_payload(run)), 202
 
     @bp.get("")

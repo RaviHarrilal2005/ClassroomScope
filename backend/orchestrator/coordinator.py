@@ -117,8 +117,15 @@ class PipelineCoordinator:
         if trigger_type not in TRIGGER_TYPES:
             raise ValueError(f"trigger_type must be one of {TRIGGER_TYPES}, got '{trigger_type}'")
         run = self.store.create_run(trigger_type)
-        for stage in PIPELINE_ORDER:
-            self.store.create_stage(run.id, stage)
+        try:
+            for stage in PIPELINE_ORDER:
+                self.store.create_stage(run.id, stage)
+        except Exception as exc:
+            # e.g. the database's stage-name check lacks a new stage (a migration
+            # not applied yet). Record it, so the run doesn't sit at 'running' forever.
+            logger.exception("Run %s: could not create its stage rows", run.id)
+            self._abort(run.id, f"Could not create the stage rows: {describe(exc)}")
+            raise
         logger.info("Run %s created (%s)", run.id, trigger_type)
         return run
 

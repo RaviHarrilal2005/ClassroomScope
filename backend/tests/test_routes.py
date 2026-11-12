@@ -105,3 +105,18 @@ def test_run_list_names_the_run_in_progress():
     gate.set()
     assert runner.wait(timeout=5)
     assert client.get("/api/v1/runs").get_json()["active_run_id"] is None
+
+
+def test_a_run_that_cannot_be_created_says_why():
+    client, runner = build_client()
+
+    def rejected(*args, **kwargs):
+        raise RuntimeError("violates check constraint pipeline_stage_runs_stage_name_check")
+
+    runner.coordinator.store.create_stage = rejected
+    response = client.post("/api/v1/runs", json={"trigger_type": "manual"})
+    assert response.status_code == 500
+    assert "check constraint" in response.get_json()["error"]
+    assert runner.active_run_id is None   # the next attempt isn't blocked
+    run = client.get("/api/v1/runs").get_json()["runs"][0]
+    assert run["status"] == RunStatus.FAILED
