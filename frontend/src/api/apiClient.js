@@ -32,6 +32,8 @@ async function request(path, options = {}) {
   try {
     res = await fetch(`${BASE_URL}${path}`, options);
   } catch (cause) {
+    // A caller that cancelled the request wants the AbortError, not "backend down".
+    if (options.signal?.aborted) throw cause;
     // fetch only rejects on a transport failure, which almost always means
     // the backend is not running. Saying so beats "Failed to fetch".
     throw new ApiError(
@@ -69,14 +71,17 @@ function toQuery(filters = {}) {
   return query ? `?${query}` : "";
 }
 
-/** Dashboard results for these filters (from, to, source_type, stakeholder, topic, q). */
-export async function getResults(filters) {
-  return request(`/results${toQuery(filters)}`);
+/**
+ * Dashboard results for these filters (from, to, source_type, stakeholder, topic, q).
+ * signal (an AbortSignal) cancels the request; the caller ignores what it then throws.
+ */
+export async function getResults(filters, signal) {
+  return request(`/results${toQuery(filters)}`, { signal });
 }
 
-/** Comments mentioning filters.q, on the articles the other filters allow. */
-export async function searchComments(filters) {
-  return request(`/search/comments${toQuery(filters)}`);
+/** Comments mentioning filters.q, on the articles the other filters allow. Takes a signal like getResults. */
+export async function searchComments(filters, signal) {
+  return request(`/search/comments${toQuery(filters)}`, { signal });
 }
 
 // --- pipeline runs ----------------------------------------------------

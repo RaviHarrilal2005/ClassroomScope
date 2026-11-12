@@ -2,9 +2,9 @@
  * Dashboard Shell — page layout (Section 3 of design doc).
  *
  * Two views behind a pair of tabs: the dashboard (filters, charts,
- * articles, comment search) and the pipeline runs console. Everything
- * reads from ViewStateContext, which reloads whenever the filters
- * change; nothing here fetches.
+ * articles, comment search) and the pipeline runs console. Everything,
+ * the open tab included, reads from ViewStateContext, which reloads
+ * whenever the filters change; nothing here fetches.
  *
  * STATUS: everything shown is real and filtered by the backend: top
  * topics, the article table and comment search (orchestrator/corpus.py),
@@ -12,7 +12,6 @@
  * stance share and readers' comment sentiment (agents/aggregation/compute.py).
  * Export is the article table's Export CSV button (src/csv.js).
  */
-import { useState } from "react";
 import { useViewState } from "../state/ViewStateContext";
 import AdminConsole from "./AdminConsole";
 import ArticleTable from "./ArticleTable";
@@ -27,7 +26,7 @@ const VIEWS = [
 ];
 
 export default function DashboardShell() {
-  const [view, setView] = useState("dashboard");
+  const { view, setView } = useViewState(); // in the URL as ?view=runs
 
   return (
     <>
