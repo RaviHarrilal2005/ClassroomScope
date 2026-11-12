@@ -394,6 +394,14 @@
 .chart {
   max-width: 760px;
 }
+/* The monthly chart scrolls sideways past ~20 months; the 760px cap would make it scroll on a desktop too. */
+.chart:has(.chart-scroll) {
+  max-width: none;
+}
+/* Recharts' default axis text is a fixed #666: too dim on the dark card. */
+.recharts-cartesian-axis-tick-value {
+  fill: var(--muted);
+}
 .chart-donut {
   max-width: 480px;
   margin: 0 auto;
