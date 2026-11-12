@@ -29,3 +29,7 @@ Thumbs.db
 
 # End-to-end results: one folder per session (backend/e2e/results/<date-time>/)
 backend/e2e/results/
+
+# Topic-model candidates from agents/topic/train_auto.py (models/<version>/):
+# never registered, ~440 MB each. The registered model sits flat in models/.
+backend/agents/topic/models/*/
