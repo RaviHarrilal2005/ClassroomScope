@@ -165,7 +165,7 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | Reader comments | Every comment counts once, pooled over the filtered articles | The few most-discussed articles set the share | Average per article, or show the spread |
 | Reader comments | Only articles from sources that publish comments have any | "How readers react" covers a narrow slice of the coverage | More comment sources (Supabase already has Reddit tables) |
 | Sentiment charts | No hover tooltips; every share is printed as text instead | Nothing to discover by hovering | Add if a chart ever drops its printed values |
-| Redesign | Light theme only; badge colours inline in `StatusBadge` | Ignores an OS dark-mode preference | `prefers-color-scheme` token set, badge colours as tokens |
+| Redesign | Dark theme follows the OS setting only (`prefers-color-scheme` in `styles.css`) | No way to pick light or dark per site | A toggle that sets `data-theme` on `<html>` and is remembered |
 | Redesign | Topic chart labels wrap to two lines at most | Labels over ~56 characters clip | Measure text, or wrap to N lines |
 | Pipeline runs | All 20 recent runs listed; Start a run and Run on 5 stored articles have no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
 | Pipeline runs | Run on stored articles always takes the 5 oldest analysis-ready articles (`BACKLOG_RUN_SIZE`) | Re-analyses the same 5 every time; can't pick which or how many | Take a size, or specific article IDs, in the request |
