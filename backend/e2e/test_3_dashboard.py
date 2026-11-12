@@ -38,7 +38,8 @@ def test_d1_dashboard_shows_real_topics_and_sentiment(
     expect(page.get_by_text(f"{counted} of {total} matching article(s) have a topic; "
                             f"{unassigned} don't fit any topic yet.")).to_be_visible(timeout=PAGE_TIMEOUT)
 
-    expect(page.locator("svg.recharts-surface")).to_have_count(2)
+    # Sentiment, top topics, stance and readers' comments.
+    expect(page.locator("svg.recharts-surface")).to_have_count(4)
     topics = card(page, "Top topics")
     labels = topics.locator(".recharts-yAxis-tick-labels text")
     expect(labels).to_have_count(len(expected["items"]))
@@ -51,8 +52,24 @@ def test_d1_dashboard_shows_real_topics_and_sentiment(
     expect(page.get_by_text("Placeholder figures")).to_have_count(0)
     expect(page.get_by_text(f"Share of the {sentiment['analysed']} matching article(s) "
                             "with a sentiment result.")).to_be_visible()
+    donut = card(page, "Sentiment toward GAI in education")
     for name, share in sentiment["shares"].items():
-        expect(page.get_by_text(f"{name.capitalize()} {percent(share)}%", exact=True)).to_be_visible()
+        expect(donut.get_by_text(f"{name.capitalize()} {percent(share)}%", exact=True)).to_be_visible()
+
+    stance = database.stance_facet(environment.client)
+    donut = card(page, "Stance toward GAI in education")
+    expect(donut.get_by_text(f"Share of the {stance['analysed']} matching article(s) with a stance")).to_be_visible()
+    for field, name in (("favor", "For"), ("against", "Against"), ("neutral", "Neutral")):
+        if stance["shares"][field]:
+            expect(donut.get_by_text(f"{name} {percent(stance['shares'][field])}%", exact=True)).to_be_visible()
+
+    comments = database.comment_facet(environment.client)
+    donut = card(page, "How readers react")
+    expect(donut.get_by_text(f"Sentiment of {comments['analysed']} reader comment(s) on the "
+                             f"{comments['articles']} matching")).to_be_visible()
+    for name, share in comments["shares"].items():
+        if share:
+            expect(donut.get_by_text(f"{name.capitalize()} {percent(share)}%", exact=True)).to_be_visible()
 
     # The headline names what the API picked; each breakdown gets a baseline row plus one per group.
     body = requests.get(f"{backend.url}/api/v1/results", timeout=60).json()

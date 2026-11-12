@@ -22,7 +22,8 @@ from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, make_response, request
 from flask_cors import CORS
 
-from agents.aggregation.compute import NO_SENTIMENT, sentiment_figures
+from agents.aggregation.compute import (NO_COMMENTS, NO_SENTIMENT, NO_STANCE, comment_figures, sentiment_figures,
+                                        stance_figures)
 from orchestrator import (
     BackgroundRunner,
     InMemoryRunStore,
@@ -104,23 +105,24 @@ def create_app(runner=None, read_corpus=None, search_comments=None):
         to, source_type, stakeholder, topic, q (see orchestrator/corpus.py).
 
         Everything is computed from the analysis tables: topics and the
-        article list by the corpus, the sentiment figures over the same
-        filtered articles.
-
-        TODO: add auth check once Session/Auth Context (SS-5) is wired in
+        article list by the corpus; the sentiment, stance and reader
+        comment figures over the same filtered articles.
         """
         filters = filters_or_400()
         current = read_corpus()
-        if not current["available"]:
-            reason = current["reason"]
-        elif any(filters.values()):
-            reason = "No analysed articles match these filters."
-        else:
-            reason = NO_SENTIMENT
+
+        def why_empty(default: str) -> str:
+            if not current["available"]:
+                return current["reason"]
+            return "No analysed articles match these filters." if any(filters.values()) else default
+
         matched = corpus.filter_articles(current["articles"], filters)
         return jsonify({
             **corpus.results_payload(current, filters),
-            **sentiment_figures(matched, reason),
+            **sentiment_figures(matched, why_empty(NO_SENTIMENT)),
+            **stance_figures(matched, why_empty(NO_STANCE)),
+            # Most articles have no comments, so "match nothing" would mislead here.
+            **comment_figures(matched, current["reason"] or NO_COMMENTS),
         })
 
     @app.get("/api/v1/search/comments")

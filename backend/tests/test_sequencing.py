@@ -57,8 +57,8 @@ def test_stages_run_in_pipeline_order(make_coordinator):
 
     assert log[0] == COLLECTION
     assert log[1] == SECURITY
-    assert sorted(log[2:6]) == sorted(ANALYSIS_STAGES)  # any order — they run in parallel
-    assert log[6] == AGGREGATION
+    assert sorted(log[2:-1]) == sorted(ANALYSIS_STAGES)  # any order — they run in parallel
+    assert log[-1] == AGGREGATION
 
 
 def test_analysis_agents_run_at_the_same_time(make_coordinator):

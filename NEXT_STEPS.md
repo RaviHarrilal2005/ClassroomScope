@@ -1,7 +1,8 @@
 # What's left to do
 
-The pipeline runs from start to finish. Stance is still a placeholder,
-and so is sentiment on any computer without its libraries.
+The pipeline runs from start to finish with a real agent at every
+stage. Sentiment and comment sentiment are placeholders on any computer
+without their libraries, and stance on any without the Trussed keys.
 This page lists what has to change and how to tell when each part is
 done.
 
@@ -60,7 +61,8 @@ Two words you'll see on the dashboard:
 | Classification | real | Juan |
 | Topic | real (needs Git LFS, see above) | Esmeralda |
 | Sentiment | real (needs `transformers` + `vaderSentiment`, see requirements.txt) | Deena |
-| Stance | stub: no code yet | TBD |
+| Stance | real (needs `TRUSSED_API_KEY` + `TRUSSED_BASE_URL`): for / against / neutral toward GAI in education | Ravi |
+| Comment sentiment | real (needs `transformers`): readers' comments, after security screens them | Deena |
 | Aggregation | real: the dashboard's sentiment figures | Ravi |
 
 ## 1. Sentiment: done, check it on a real run (Deena)
@@ -75,11 +77,24 @@ rows for those 5 articles. The first RoBERTa run downloads the model
 (over 1 GB). VADER was checked against real articles; the RoBERTa path
 has not been run through the pipeline yet.
 
-## 2. Stance (TBD)
+## 2. Stance and comment sentiment: done (Ravi, Deena)
 
-There's no stance code yet, and nothing on the dashboard uses stance
-results. Whoever picks it up can follow the same steps as sentiment.
-Results go in the `stance_results` table.
+Stance (`agents/stance/stance_agent.py`) asks the Luna LLM whether each
+article is for, against or neutral toward generative AI in education,
+the three labels of SemEval-2016 Task 6. It writes `stance_results`
+with the target and method on every row, and skips articles that
+already have one. Comment sentiment (`agents/sentiment/comment_sentiment_agent.py`)
+is now its own pipeline stage, `comment_sentiment`, labelling the reader
+comments security has passed. The dashboard shows both: a stance donut,
+a "How readers react" donut, and a stance column in the article table
+and the CSV.
+
+To check it: a run shows `stance` and `comment_sentiment` as
+`succeeded`. To label every article that has no stance yet:
+`python -m agents.stance.stance_agent --save` from `backend/`.
+
+Open: nobody has checked the stance labels against human ones yet
+(README, "MVP features").
 
 ## 3. Aggregation: done, check it on a real run (Ravi)
 

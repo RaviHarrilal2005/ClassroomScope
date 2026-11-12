@@ -20,6 +20,7 @@ const COLUMNS = [
   ["topic_id", "stable_topic_id"],
   ["topic", "topic"],
   ["sentiment", "sentiment"],
+  ["stance", "stance"],
 ];
 const SNIPPET = ["snippet", "snippet"];
 

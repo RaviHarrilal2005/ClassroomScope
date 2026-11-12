@@ -33,27 +33,28 @@ building out the real views.
 
 ## What's NOT built yet
 
-- Auth / session context (SS-5 login) — apiClient has TODOs where the
-  token will attach
 - A chart of sentiment by month — `/results` carries it; the stakeholder
   and topic breakdowns are drawn
 
 ## Pipeline coordinator (in progress)
 
 `backend/orchestrator/` runs the agents in order —
-**Collection → Security → Analysis (4 agents at once) → Aggregation** —
+**Collection → Security → Analysis (5 agents at once) → Aggregation** —
 and records each stage's status. It retries collection, skips analysis
 if security screening fails, uses a fallback when sentiment fails, and
 keeps the results of stages that succeeded when another fails.
 
-- **Four of the seven agents are real**: collection (news APIs + RSS,
+- **Every stage has a real agent**: collection (news APIs + RSS,
   dedupe, keyword then LLM relevance check, body extraction), security
-  (content sanitization screening), classification (stakeholder and
-  source type) and topic (a saved BERTopic model, stored in the repo with
-  Git LFS; where it is missing, topic stays a stub). Sentiment (RoBERTa, with
-  VADER as its fallback) runs where `transformers` and `vaderSentiment`
-  are installed; aggregation computes the dashboard's sentiment figures;
-  stance has no implementation. Each owner's code
+  (content sanitization screening, of articles and reader comments),
+  classification (stakeholder and source type) and topic (a saved
+  BERTopic model, stored in the repo with Git LFS; where it is missing,
+  topic stays a stub). Sentiment (RoBERTa, with VADER as its fallback)
+  and comment sentiment (a 3-class RoBERTa over the screened reader
+  comments) run where `transformers` and `vaderSentiment` are installed.
+  Stance (whether an article is for, against or neutral toward GAI in
+  education, labelled by the Luna LLM) runs where `TRUSSED_API_KEY` is
+  set. Aggregation computes the dashboard's figures. Each owner's code
   lives in `backend/agents/<stage>/`.
 - The registry picks real agents when Supabase is configured and stubs
   otherwise, so the app and the tests still work without credentials.
@@ -159,6 +160,10 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | Aggregation | Sentiment figures recomputed from the cached corpus on every request; the pipeline stage checks they can be computed and stores nothing (`agents/aggregation/`) | No record of the figures per run, so runs can't be compared over time | A snapshot row per run |
 | Sentiment charts | Headline names a group or topic only at 20+ articles, a fixed cutoff (`MIN_ARTICLES_TO_NAME`, in `compute.py` and `VisualizationViews.jsx`) | Not a significance test: at 20 one article still moves a share 5 points | A confidence interval per share, named only when it clears the overall figure |
 | Sentiment charts | No chart of `sentiment_over_time`, though the API sends it | Can't see when coverage turned; today 184 of 323 articles are from Sept 2026, so it would be one spike | Draw it once months are filled more evenly |
+| Stance | One LLM call per article, never checked against human labels; the confidence is the model's own and is about 0.95 on nearly every article | Accuracy is unknown, and confidence can't separate sure labels from unsure ones | Hand-label a sample (say 50 articles) and report agreement (Cohen's kappa); drop or calibrate the confidence |
+| Stance | The article as a whole toward one target, "generative AI in education" | An article for AI tutoring but against AI essays gets one label | Stance per aspect; `stance_results.target` already holds the target per row |
+| Reader comments | Every comment counts once, pooled over the filtered articles | The few most-discussed articles set the share | Average per article, or show the spread |
+| Reader comments | Only articles from sources that publish comments have any | "How readers react" covers a narrow slice of the coverage | More comment sources (Supabase already has Reddit tables) |
 | Sentiment charts | No hover tooltips; every share is printed as text instead | Nothing to discover by hovering | Add if a chart ever drops its printed values |
 | Redesign | Light theme only; badge colours inline in `StatusBadge` | Ignores an OS dark-mode preference | `prefers-color-scheme` token set, badge colours as tokens |
 | Redesign | Topic chart labels wrap to two lines at most | Labels over ~56 characters clip | Measure text, or wrap to N lines |

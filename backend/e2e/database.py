@@ -124,3 +124,24 @@ def sentiment_facet(client: Any) -> Dict[str, Any]:
     n = len(labels)
     return {"analysed": n,
             "shares": {s: (labels.count(s) / n if n else 0) for s in ("positive", "neutral", "negative")}}
+
+
+def stance_facet(client: Any) -> Dict[str, Any]:
+    """The /results stance share from the raw tables: the newest stance_results row per analysable article."""
+    newest = {row["article_id"]: row["stance"] for row in page_all(
+        lambda: client.table("stance_results").select("article_id, stance").order("id"))}
+    labels = [newest[a] for a in corpus_ids(client) if newest.get(a) in ("favor", "against", "neutral")]
+    n = len(labels)
+    return {"analysed": n, "shares": {s: (labels.count(s) / n if n else 0) for s in ("favor", "against", "neutral")}}
+
+
+def comment_facet(client: Any) -> Dict[str, Any]:
+    """The /results reader-comment figures from the raw tables: every hartmann_3 comment on an analysable article."""
+    corpus = corpus_ids(client)
+    rows = [r for r in page_all(lambda: client.table("comment_sentiment_results")
+                                .select("article_id, sentiment").eq("method", "hartmann_3").order("id"))
+            if r["article_id"] in corpus and r["sentiment"] in ("positive", "neutral", "negative")]
+    n = len(rows)
+    return {"analysed": n, "articles": len({r["article_id"] for r in rows}),
+            "shares": {s: (sum(r["sentiment"] == s for r in rows) / n if n else 0)
+                       for s in ("positive", "neutral", "negative")}}

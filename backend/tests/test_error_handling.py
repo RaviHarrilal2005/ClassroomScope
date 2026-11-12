@@ -96,9 +96,10 @@ def test_one_analysis_failure_does_not_stop_the_others(make_coordinator):
     assert "Failed stage(s): topic" in run.notes
     stages = stages_by_name(coordinator, run.id)
     assert stages[TOPIC].status == StageStatus.FAILED
-    for stage in (SENTIMENT, CLASSIFICATION, STANCE, AGGREGATION):
+    others = [s for s in ANALYSIS_STAGES if s != TOPIC]
+    for stage in (*others, AGGREGATION):
         assert stages[stage].status == StageStatus.SUCCEEDED
-    assert received["stages"] == [SENTIMENT, CLASSIFICATION, STANCE]
+    assert received["stages"] == others
 
 
 def test_sentiment_uses_fallback_when_primary_fails(make_coordinator):

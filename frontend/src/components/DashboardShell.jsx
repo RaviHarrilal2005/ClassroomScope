@@ -8,11 +8,9 @@
  *
  * STATUS: everything shown is real and filtered by the backend: top
  * topics, the article table and comment search (orchestrator/corpus.py),
- * and the sentiment share, its breakdowns and the headline's picks
- * (agents/aggregation/compute.py).
- *
- * NOT built yet: login. See design doc Section 2. Export is the article
- * table's Export CSV button (src/csv.js).
+ * and the sentiment share, its breakdowns, the headline's picks, the
+ * stance share and readers' comment sentiment (agents/aggregation/compute.py).
+ * Export is the article table's Export CSV button (src/csv.js).
  */
 import { useState } from "react";
 import { useViewState } from "../state/ViewStateContext";
@@ -21,7 +19,7 @@ import ArticleTable from "./ArticleTable";
 import CommentResults from "./CommentResults";
 import FilterPanel from "./FilterPanel";
 import { humanize } from "./text";
-import { SentimentDonut, SentimentSplitBar, TopTopicsBar, percent } from "./VisualizationViews";
+import { STANCES, SentimentDonut, SentimentSplitBar, TopTopicsBar, percent } from "./VisualizationViews";
 
 const VIEWS = [
   { id: "dashboard", label: "Dashboard" },
@@ -94,6 +92,18 @@ function Dashboard() {
               <section className="card">
                 <h2>Top topics</h2>
                 <TopTopics facet={results.top_topics} />
+              </section>
+            </div>
+
+            <div className="chart-row">
+              <section className="card">
+                <h2>Stance toward GAI in education</h2>
+                <Stance results={results} />
+              </section>
+
+              <section className="card">
+                <h2>How readers react</h2>
+                <ReaderComments results={results} />
               </section>
             </div>
 
@@ -220,6 +230,41 @@ function Sentiment({ results }) {
         Share of the {results.analysed} matching article(s) with a sentiment result.
       </p>
       <SentimentDonut distribution={results.sentiment_distribution} />
+    </>
+  );
+}
+
+/**
+ * Whether the filtered articles come down for or against GAI in
+ * education. Sentiment is tone; this is the side an article takes, so a
+ * gloomy article about a ban can still be neutral reporting.
+ */
+function Stance({ results }) {
+  if (results.stance_analysed === 0) return <p className="empty-note">{results.stance_reason}</p>;
+  return (
+    <>
+      <p className="card-subtitle">
+        Share of the {results.stance_analysed} matching article(s) with a stance, labelled by an LLM.
+      </p>
+      <SentimentDonut distribution={results.stance_distribution} slices={STANCES} />
+    </>
+  );
+}
+
+/**
+ * Sentiment of readers' comments on the filtered articles. Each comment
+ * counts once, so the most-discussed articles weigh the most; only
+ * comments that passed security screening are labelled.
+ */
+function ReaderComments({ results }) {
+  if (results.comments_analysed === 0) return <p className="empty-note">{results.comment_reason}</p>;
+  return (
+    <>
+      <p className="card-subtitle">
+        Sentiment of {results.comments_analysed} reader comment(s) on the {results.comment_articles} matching
+        article(s) that have comments.
+      </p>
+      <SentimentDonut distribution={results.comment_sentiment_distribution} />
     </>
   );
 }

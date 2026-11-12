@@ -10,11 +10,12 @@ ARTICLES = [
     {"id": 1, "title": "Teachers try AI tutors", "source": "Example News", "url": "https://example.com/1",
      "published_date": "2026-09-01T10:00:00+00:00", "clean_content": "Teachers say tutors help.",
      "source_type": "news_outlet", "stakeholder": "educators", "stable_topic_id": "T001", "topic": "Adoption",
-     "sentiment": "positive"},
+     "sentiment": "positive", "stance": "favor",
+     "comment_sentiment": {"positive": 1, "neutral": 0, "negative": 3}},
     {"id": 2, "title": "Students and cheating", "source": "A Blog", "url": "https://example.com/2",
      "published_date": "2026-08-01T10:00:00+00:00", "clean_content": "Cheating with chatbots rises.",
      "source_type": "blog", "stakeholder": "students", "stable_topic_id": "T004", "topic": "Integrity",
-     "sentiment": "negative"},
+     "sentiment": "negative", "stance": "against", "comment_sentiment": None},
 ]
 
 
@@ -57,6 +58,20 @@ def test_results_applies_the_filters_to_articles_and_topics():
     assert [r["label"] for r in body["sentiment_by_stakeholder"]] == ["students"]
 
 
+def test_results_carry_stance_and_reader_comment_figures_for_the_filtered_articles():
+    client, _ = build_client(read_corpus=available, search_comments=RecordingSearch())
+    body = client.get("/api/v1/results").get_json()
+    assert body["stance_distribution"] == {"favor": 0.5, "against": 0.5, "neutral": 0}
+    assert [a["stance"] for a in body["articles"]["items"]] == ["favor", "against"]
+    assert (body["comments_analysed"], body["comment_articles"]) == (4, 1)
+    assert body["comment_sentiment_distribution"] == {"positive": 0.25, "neutral": 0, "negative": 0.75}
+
+    body = client.get("/api/v1/results?stakeholder=students").get_json()
+    assert body["stance_distribution"]["against"] == 1.0
+    assert body["comments_analysed"] == 0
+    assert body["comment_reason"] == "None of these articles has analysed reader comments."
+
+
 def test_results_refuses_a_bad_date():
     client, _ = build_client(read_corpus=available, search_comments=RecordingSearch())
     response = client.get("/api/v1/results?from=yesterday")
@@ -74,6 +89,7 @@ def test_results_without_a_database_still_loads_and_says_why():
     assert body["articles"]["reason"] == "Database down."
     assert body["top_topics"]["available"] is False
     assert body["analysed"] == 0 and body["sentiment_reason"] == "Database down."
+    assert body["stance_reason"] == "Database down." and body["comment_reason"] == "Database down."
 
 
 def test_filters_that_match_nothing_give_empty_figures_with_the_reason():

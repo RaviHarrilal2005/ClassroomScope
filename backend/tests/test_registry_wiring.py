@@ -14,13 +14,16 @@ import sys
 import pytest
 
 from agents.adapters import ClassificationAgent, CollectionAgent, TopicAgent
+from agents.sentiment.comment_sentiment_agent import CommentSentimentAgent
 from agents.sentiment.sentiment_agent import SentimentAgent
+from agents.stance.stance_agent import StanceAgent
 from orchestrator.agents import StubAgent
 from orchestrator.registry import _luna_configured, build_default_registry
 from orchestrator.stages import (
     AGGREGATION,
     CLASSIFICATION,
     COLLECTION,
+    COMMENT_SENTIMENT,
     PIPELINE_ORDER,
     SECURITY,
     SENTIMENT,
@@ -29,7 +32,6 @@ from orchestrator.stages import (
 )
 
 REAL_STAGES = (COLLECTION, SECURITY, CLASSIFICATION, AGGREGATION)
-STILL_STUBBED = (STANCE,)
 
 
 def test_every_stage_has_an_agent_either_way():
@@ -47,13 +49,14 @@ def test_live_wiring_uses_the_real_agents_where_they_exist():
     assert not any(isinstance(registry.get(s), StubAgent) for s in REAL_STAGES)
 
 
-def test_stages_with_no_implementation_stay_stubbed_even_when_live():
-    """
-    None of these has an agent the pipeline can call. Asking for live
-    agents must not quietly register something for them.
-    """
-    registry = build_default_registry(live=True)
-    assert all(isinstance(registry.get(s), StubAgent) for s in STILL_STUBBED)
+def test_stance_asks_the_llm_when_it_has_credentials(monkeypatch):
+    monkeypatch.setattr("orchestrator.registry._luna_configured", lambda: True)
+    assert isinstance(build_default_registry(live=True).get(STANCE), StanceAgent)
+
+
+def test_stance_stays_stubbed_without_llm_credentials(monkeypatch):
+    monkeypatch.setattr("orchestrator.registry._luna_configured", lambda: False)
+    assert isinstance(build_default_registry(live=True).get(STANCE), StubAgent)
 
 
 def test_building_the_live_registry_does_not_load_the_topic_model():
@@ -143,6 +146,7 @@ def test_sentiment_runs_roberta_with_vader_behind_it(monkeypatch):
     primary, fallback = registry.get(SENTIMENT), registry.get_fallback(SENTIMENT)
     assert isinstance(primary, SentimentAgent) and primary.method == "roberta_news_v2"
     assert isinstance(fallback, SentimentAgent) and fallback.method == "vader"
+    assert isinstance(registry.get(COMMENT_SENTIMENT), CommentSentimentAgent)
 
 
 def test_sentiment_stays_stubbed_where_its_libraries_are_missing(monkeypatch):
@@ -150,6 +154,7 @@ def test_sentiment_stays_stubbed_where_its_libraries_are_missing(monkeypatch):
     registry = build_default_registry(live=True)
     assert isinstance(registry.get(SENTIMENT), StubAgent)
     assert registry.get_fallback(SENTIMENT) is not None
+    assert isinstance(registry.get(COMMENT_SENTIMENT), StubAgent)
 
 
 def test_sentiment_is_a_stub_without_live():

@@ -27,7 +27,12 @@ Which stages are real (see docs/pipeline-coordinator.md):
                   transformers and vaderSentiment are installed (the
                   registry builds it directly, no shell needed); a stub
                   elsewhere
-  stance          stub - no implementation on any branch yet
+  stance          real - agents/stance/ StanceAgent, where the Luna LLM is
+                  configured (the registry builds it directly); a stub
+                  elsewhere
+  comment_sentiment
+                  real - agents/sentiment/ CommentSentimentAgent, where
+                  transformers is installed; a stub elsewhere
   aggregation     real - AggregationAgent (sentiment figures over the corpus)
 """
 from __future__ import annotations

@@ -73,3 +73,41 @@ def sentiment_figures(articles: Iterable[Row], reason_if_empty: str = NO_SENTIME
         "most_negative_stakeholder": _most_negative(by_stakeholder),
         "sentiment_reason": reason,
     }
+
+
+STANCES = ("favor", "against", "neutral")
+NO_STANCE = "No stance results yet."
+NO_COMMENTS = "None of these articles has analysed reader comments."
+
+
+def stance_figures(articles: Iterable[Row], reason_if_empty: str = NO_STANCE) -> Row:
+    """The share of articles for, against and neutral toward GAI in education, among those with a stance."""
+    stances = [a["stance"] for a in articles if a.get("stance") in STANCES]
+    total = len(stances)
+    return {
+        "stance_analysed": total,
+        "stance_distribution": {s: (stances.count(s) / total if total else 0) for s in STANCES},
+        "stance_reason": None if total else reason_if_empty,
+    }
+
+
+def comment_figures(articles: Iterable[Row], reason_if_empty: str = NO_COMMENTS) -> Row:
+    """
+    The sentiment of readers' comments on these articles, every comment
+    counted once: an article with 500 comments weighs 500 times one with 1.
+    """
+    counts = _zero_counts()
+    with_comments = 0
+    for a in articles:
+        per_article = a.get("comment_sentiment") or {}
+        if any(per_article.get(s) for s in SENTIMENTS):
+            with_comments += 1
+            for s in SENTIMENTS:
+                counts[s] += per_article.get(s, 0)
+    total = sum(counts.values())
+    return {
+        "comments_analysed": total,
+        "comment_articles": with_comments,
+        "comment_sentiment_distribution": {s: (counts[s] / total if total else 0) for s in SENTIMENTS},
+        "comment_reason": None if total else reason_if_empty,
+    }
