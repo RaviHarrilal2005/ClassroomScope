@@ -11,12 +11,14 @@
  * green are about ΔE 5 apart for a deuteranope, blue and red about 20.
  * Neutral is light so the 70%-neutral bars show their lean, not a grey wall.
  *
- * accessibilityLayer is off because these charts have no tooltip to
- * navigate. Recharts' default would make each one a tab stop that does
- * nothing, with role="application" — which switches a screen reader out
- * of the reading mode it needs to hear the labels that carry the values.
+ * Tooltips are a mouse and touch extra: what they show is also printed,
+ * or in the month-by-month list under the monthly chart. So
+ * accessibilityLayer is off: Recharts' default would make each chart a
+ * tab stop with role="application", which switches a screen reader out of
+ * the reading mode it needs to hear the labels that carry the values.
  */
-import { Bar, BarChart, LabelList, Pie, PieChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { monthlyShares } from "../months";
 import { BLUE, GREY, RED } from "./statusStyles";
 
 const SENTIMENTS = [
@@ -102,6 +104,21 @@ function WrappedTick({ x, y, payload }) {
   );
 }
 
+// The band behind the hovered bar or column: a step off the card, not Recharts' grey.
+const HOVER_BAND = { fill: "var(--line-soft)" };
+
+/** The hovered topic's full name, which the axis may clip, and its count. */
+function TopicTip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const { label, count } = payload[0].payload;
+  return (
+    <div className="chart-tooltip">
+      <p><strong>{count}</strong> article(s)</p>
+      <p className="muted">{label}</p>
+    </div>
+  );
+}
+
 /** [{ label, count }] as horizontal bars, in the order given. */
 export function TopTopicsBar({ topics }) {
   return (
@@ -112,6 +129,7 @@ export function TopTopicsBar({ topics }) {
           {/* Real topic names run to ~50 characters: a fixed width, wrapped, so a
               phone-width card keeps room for the bars. */}
           <YAxis type="category" dataKey="label" width={190} tick={WrappedTick} />
+          <Tooltip content={TopicTip} cursor={HOVER_BAND} />
           <Bar dataKey="count" fill={BLUE.fg}>
             <LabelList dataKey="count" position="right" />
           </Bar>
@@ -161,14 +179,89 @@ export function SentimentSplitBar({ rows }) {
           </div>
         );
       })}
-      <p className="chart-legend">
-        {SPLIT_ORDER.map(({ field, name, fill }) => (
-          <span key={field}>
-            <span className="swatch" style={{ background: fill }} aria-hidden="true" /> {name}
-          </span>
-        ))}
-        <span className="muted">Faded: fewer than {MIN_ARTICLES_TO_NAME} articles</span>
-      </p>
+      <SplitLegend />
+    </div>
+  );
+}
+
+function SplitLegend() {
+  return (
+    <p className="chart-legend">
+      {SPLIT_ORDER.map(({ field, name, fill }) => (
+        <span key={field}>
+          <span className="swatch" style={{ background: fill }} aria-hidden="true" /> {name}
+        </span>
+      ))}
+      <span className="muted">Faded: fewer than {MIN_ARTICLES_TO_NAME} articles</span>
+    </p>
+  );
+}
+
+/** "2026-09" as a date, for its month name and year. */
+const monthDate = (label) => new Date(`${label}-01T00:00`);
+
+/** "2026-09" -> "September 2026". */
+export const monthName = (label) => monthDate(label).toLocaleString("en", { month: "long", year: "numeric" });
+
+/** Under each column: its article count, the month, and the year at the start and every January. */
+function MonthTick({ x, y, payload, index, months }) {
+  const { total } = months[index];
+  const d = monthDate(payload.value);
+  return (
+    <text x={x} y={y} textAnchor="middle" className="recharts-text" style={{ fill: "var(--muted)" }}>
+      <tspan x={x} dy="0.8em" style={total >= MIN_ARTICLES_TO_NAME ? { fill: "var(--text)" } : undefined}>{total}</tspan>
+      <tspan x={x} dy="1.3em">{d.toLocaleString("en", { month: "short" })}</tspan>
+      {(index === 0 || d.getMonth() === 0) && <tspan x={x} dy="1.2em">{d.getFullYear()}</tspan>}
+    </text>
+  );
+}
+
+/** The hovered month's count and shares, top of the column first. */
+function MonthTip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const m = payload[0].payload;
+  return (
+    <div className="chart-tooltip">
+      <p><strong>{monthName(m.label)}</strong> · {m.total} article(s)</p>
+      {m.total > 0 && SENTIMENTS.map(({ field, name, fill }) => (
+        <p key={field}>
+          <span className="swatch" style={{ background: fill }} aria-hidden="true" /> <strong>{percent(m[field])}</strong> {name}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * sentiment_over_time ([{ label: "YYYY-MM", ...counts }]) as one 100%
+ * column per month, negative at the bottom. Shares, not counts, so one
+ * busy month doesn't flatten the rest; each month's count is printed under
+ * its column, and months under MIN_ARTICLES_TO_NAME are faded. Too many
+ * months for a phone scroll sideways rather than squeeze the labels.
+ */
+export function SentimentByMonth({ rows }) {
+  const months = monthlyShares(rows);
+  return (
+    <div className="chart">
+      <div className="chart-scroll">
+        <ResponsiveContainer width="100%" height={270} minWidth={months.length * 36 + 48}>
+          <BarChart data={months} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} accessibilityLayer={false}>
+            <XAxis dataKey="label" interval={0} height={56} tickLine={false} axisLine={false}
+                   tick={(props) => <MonthTick {...props} months={months} />} />
+            <YAxis domain={[0, 1]} ticks={[0, 0.5, 1]} tickFormatter={percent} width={40}
+                   tickLine={false} axisLine={false} />
+            <Tooltip content={MonthTip} cursor={HOVER_BAND} />
+            {SPLIT_ORDER.map(({ field, fill }) => (
+              // A surface-coloured stroke is the 2px gap between segments.
+              <Bar key={field} dataKey={field} stackId="month" fill={fill} stroke="var(--surface)" strokeWidth={2}
+                   maxBarSize={24} radius={field === "positive" ? [4, 4, 0, 0] : 0}>
+                {months.map((m) => <Cell key={m.label} fillOpacity={m.total < MIN_ARTICLES_TO_NAME ? 0.45 : 1} />)}
+              </Bar>
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <SplitLegend />
     </div>
   );
 }
