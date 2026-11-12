@@ -27,7 +27,8 @@ What remains, and how to check each part, is in
     (`src/urlState.js`)
   - **Presentation layer** (`src/components/`), styled from
     `src/styles.css`, with the dark theme following the OS setting:
-    - Dashboard tab: filter panel, sentiment donut, stance donut, the
+    - Dashboard tab: filter panel, a headline naming the most negative
+      stakeholder and topic, sentiment donut, stance donut, the
       "How readers react" donut (reader comments), top-topics bar,
       "Sentiment by month" chart, sentiment split bars by stakeholder and
       by topic, article table (with a stance column and Export CSV), and
@@ -138,7 +139,9 @@ npm test                # the CSV, URL state and month tests (Node's built-in ru
 Open `http://localhost:5173` with `python app.py` running — you should
 see the real articles and topic counts from the database, not
 placeholder text. (`run_dev_server.py` reads no database, so its
-article table is empty.)
+article table is empty.) To point the front end at a backend on another
+port, set `VITE_API_URL` before `npm run dev`; it must end in `/api/v1`
+(the default is `http://localhost:5000/api/v1`).
 
 ## MVP features — come back to these
 
@@ -188,6 +191,9 @@ The known shortcuts, and what would replace each, are the MVP table.
 - No new mock data — everything should render from the Flask backend
   (`backend/app.py`) or explicitly note where it is missing a field you
   need, so we can add it.
+- New charts use Recharts. Sentiment is blue / light grey / red (red and
+  green blur together for red-green colour blindness), and the article
+  list stays a table.
 - Keep PRs scoped to one component at a time so they're easy to
   review.
 - If a component's requirements are ambiguous, check the design docs in

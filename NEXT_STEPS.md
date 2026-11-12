@@ -103,8 +103,8 @@ articles: the share (the donut), the same broken down by month, topic
 and stakeholder, and the most negative stakeholder and topic
 (`agents/aggregation/compute.py`). The aggregation stage computes them
 on every run, so a broken table fails the stage. The dashboard draws
-the monthly, stakeholder and topic breakdowns, and the article table has
-a sentiment column. Still open: a snapshot per run
+the monthly, stakeholder and topic breakdowns under a headline, and the
+article table has a sentiment column. Still open: a snapshot per run
 (README, "MVP features").
 
 To check it: a run shows aggregation `succeeded`, and
@@ -126,7 +126,8 @@ shortcuts are in the MVP table in README.md.
 - **Run the backend e2e suite once against the shared database.**
   `backend/e2e/test_3_dashboard.py` now expects 5 charts. From `backend/`,
   run `python -m pytest e2e`. It writes to the shared Supabase project
-  (see the end-to-end section of the README).
+  (see the end-to-end section of the README). Afterwards refresh
+  `docs/testing/e2e-test-report.md`, which predates the 5-chart check.
 - **Hand-label about 50 stance articles and compute Cohen's kappa.**
   Nobody has checked the stance labels against human ones yet.
 - **Run the RoBERTa sentiment path through a full pipeline run.** Only
