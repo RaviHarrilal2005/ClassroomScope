@@ -20,12 +20,11 @@
  */
 import { Bar, BarChart, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { monthlyShares } from "../months";
-import { BLUE, GREY, RED } from "./statusStyles";
 
 const SENTIMENTS = [
-  { field: "positive", name: "Positive", fill: "#2A6BB0", ink: "#fff" },
-  { field: "neutral", name: "Neutral", fill: GREY.border, ink: "var(--text)" },
-  { field: "negative", name: "Negative", fill: RED.fg, ink: "#fff" },
+  { field: "positive", name: "Positive", fill: "var(--chart-positive)", ink: "var(--chart-ink)" },
+  { field: "neutral", name: "Neutral", fill: "var(--chart-neutral)", ink: "var(--text)" },
+  { field: "negative", name: "Negative", fill: "var(--chart-negative)", ink: "var(--chart-ink)" },
 ];
 
 // Stance uses the same three colours: for reads like positive, against like negative.
@@ -131,7 +130,7 @@ export function TopTopicsBar({ topics }) {
               phone-width card keeps room for the bars. */}
           <YAxis type="category" dataKey="label" width={190} tick={WrappedTick} />
           <Tooltip content={TopicTip} cursor={HOVER_BAND} />
-          <Bar dataKey="count" fill={BLUE.fg}>
+          <Bar dataKey="count" fill="var(--chart-bar)">
             <LabelList dataKey="count" position="right" />
           </Bar>
         </BarChart>
