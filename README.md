@@ -1,37 +1,44 @@
 # ClassroomScope (in progress)
 
-**Status:** front-end skeleton confirmed working end-to-end, and the
-backend pipeline coordinator's groundwork is in place (see
-[Pipeline coordinator](#pipeline-coordinator-in-progress) below).
-The front end is not complete — it's the minimum wiring needed to prove the
-three-layer architecture from the design doc actually connects, before
-building out the real views.
+**Status:** the dashboard and the pipeline run end to end, with a real agent
+at every stage (see [Pipeline coordinator](#pipeline-coordinator) below).
+What remains, and how to check each part, is in
+[NEXT_STEPS.md](NEXT_STEPS.md); the known shortcuts are in the MVP table.
 
 ## What's working right now
 
 - Flask backend (`backend/app.py`) serving the dashboard:
   - `GET /api/v1/health` — reachability check
-  - `GET /api/v1/results` — the analysable articles (328 on 2026-10-11) and their topic
+  - `GET /api/v1/results` — the analysable articles and their topic
     counts, narrowed by `from`, `to`, `source_type`, `stakeholder`,
-    `topic` and `q` (`orchestrator/corpus.py`), with sentiment figures
-    for the same articles: the share, and by month, topic and
-    stakeholder (`agents/aggregation/`)
+    `topic` and `q` (`orchestrator/corpus.py`), with the sentiment
+    figures (the share, and by month, topic and stakeholder), the stance
+    and the reader-comment sentiment for the same articles
+    (`agents/aggregation/`)
   - `GET /api/v1/search/comments` — keyword search over the article
     comments, on the articles the other filters allow
-- React front end (`frontend/`) with the three layers from the design
-  doc partially built:
+  - the pipeline endpoints (`orchestrator/routes.py`), listed below
+- React front end (`frontend/`), in three layers:
   - **Data access layer** (`src/api/apiClient.js`) — the single client
     that talks to Flask
-  - **State layer** (`src/state/ViewStateContext.jsx`) — holds results,
-    loading, and error state
-  - **Presentation layer** (`src/components/`) — a Dashboard tab
-    (filter panel, sentiment and topic charts, article table, comment
-    search) and a Pipeline runs tab, styled from `src/styles.css`
+  - **State layer** (`src/state/ViewStateContext.jsx`) — holds the
+    filters, the open tab, results, loading, and error state. The filters
+    and tab are mirrored in the URL, so a filtered view can be shared
+    (`src/urlState.js`)
+  - **Presentation layer** (`src/components/`), styled from
+    `src/styles.css`, with the dark theme following the OS setting:
+    - Dashboard tab: filter panel, a headline naming the most negative
+      stakeholder and topic, sentiment donut, stance donut, the
+      "How readers react" donut (reader comments), top-topics bar,
+      "Sentiment by month" chart, sentiment split bars by stakeholder and
+      by topic, article table (with a stance column and Export CSV), and
+      comment search
+    - Pipeline runs tab (`AdminConsole.jsx`)
 - Verified end to end: `npm run dev` + `python app.py` together produce
   a page that fetches real JSON from Flask and renders it. No mock data
   baked into the front end.
 
-## Pipeline coordinator (in progress)
+## Pipeline coordinator
 
 `backend/orchestrator/` runs the agents in order —
 **Collection → Security → Analysis (5 agents at once) → Aggregation** —
@@ -103,7 +110,7 @@ python run_pipeline.py                   # run once with stubs, print each stage
 python run_pipeline.py --fail topic      # see how a failing agent is handled
 python run_pipeline.py --live --backlog  # the real agents, over articles already
                                          # stored (no API quota, no downloads)
-python -m pytest                        # the offline test suite (172 tests)
+python -m pytest                        # the offline test suite
 python -m pyright backend/               # type check (from the repo root)
 ```
 
@@ -126,13 +133,15 @@ The latest report: [docs/testing/e2e-test-report.md](docs/testing/e2e-test-repor
 cd frontend
 npm install
 npm run dev             # serves http://localhost:5173
-npm test                # the CSV export's and URL state's tests (Node's built-in runner)
+npm test                # the CSV, URL state and month tests (Node's built-in runner)
 ```
 
 Open `http://localhost:5173` with `python app.py` running — you should
 see the real articles and topic counts from the database, not
 placeholder text. (`run_dev_server.py` reads no database, so its
-article table is empty.)
+article table is empty.) To point the front end at a backend on another
+port, set `VITE_API_URL` before `npm run dev`; it must end in `/api/v1`
+(the default is `http://localhost:5000/api/v1`).
 
 ## MVP features — come back to these
 
@@ -168,45 +177,13 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | End-to-end checks (`backend/e2e`) | Run against the team's shared Supabase project: 5 stored articles per run, real collection only with `--collect` | Every run writes to team data: run history, re-written classifications, sometimes new articles | A separate test database, selected with `E2E_ENV_FILE=.env.test` |
 | End-to-end checks (`backend/e2e`) | Dashboard checks find elements by their visible text and layout | A redesign that changes that text breaks D1–D3. The October redesign did, and they were rewritten for it | `data-testid` attributes on the elements the tests use |
 
-## Next steps (planned)
+## Where things stand
 
-1. Work through the MVP table above
-2. Connect apiClient to the real Data Access Layer once SS-1/SS-2/SS-3
-   are integrated (see WBS, tasks under 4.5)
+The dashboard and the pipeline are built as described above. What is left,
+and how to tell when each part is done, is in [NEXT_STEPS.md](NEXT_STEPS.md).
+The known shortcuts, and what would replace each, are the MVP table.
 
-## This week: initial site design refinement
-
-The skeleton above is functionally wired but visually bare — this
-week's focus is designing and building out the views that don't exist
-yet, not touching backend/data logic. Everything reads live data
-already flowing through `apiClient.js` → `ViewStateContext.jsx` →
-`DashboardShell.jsx`; new components should plug into that same state
-layer rather than fetching independently.
-
-**Components in `frontend/src/components/`** (all built):
-
-1. **FilterPanel** — built (MVP, see the table above): date range,
-   source type, stakeholder, topic and keyword search, with filter
-   state in `ViewStateContext.jsx`, mirrored in the URL with the open
-   tab (`src/urlState.js`) so a filtered view can be shared.
-2. **VisualizationViews** — built (`VisualizationViews.jsx`, using
-   Recharts): a sentiment donut, a top-topics bar chart, and sentiment
-   split bars by stakeholder and by topic under a headline naming the
-   most negative of each. New chart types should use Recharts too; the
-   split bars are the exception, plain HTML, because Recharts' fixed
-   label axes left them no width on a phone. Sentiment is blue / light
-   grey / red (red and green blur together for red-green colour
-   blindness). The article list stays a table: a chart of a handful of
-   rows would present a sample as a distribution.
-3. **Export** — built (MVP, see the table above): an **Export CSV**
-   button on the article table downloads exactly the rows it shows, one
-   per article, built in the browser by `src/csv.js` (no endpoint).
-   Formula-looking cells get a leading apostrophe; the file opens as
-   UTF-8 in Excel and reads cleanly in R or pandas.
-4. **AdminConsole** — built: the "Pipeline runs" tab, separate from
-   the main dashboard.
-
-**Guidelines while doing this:**
+**Guidelines for front-end work:**
 
 - Follow the three-layer split already established (data access /
   state / presentation) — don't reach into `apiClient.js` directly
@@ -214,11 +191,14 @@ layer rather than fetching independently.
 - No new mock data — everything should render from the Flask backend
   (`backend/app.py`) or explicitly note where it is missing a field you
   need, so we can add it.
+- New charts use Recharts. Sentiment is blue / light grey / red (red and
+  green blur together for red-green colour blindness), and the article
+  list stays a table.
 - Keep PRs scoped to one component at a time so they're easy to
   review.
-- If a component's requirements are ambiguous, check the design doc
-  (Section 2) first; if still unclear, flag it rather than guessing.
+- If a component's requirements are ambiguous, check the design docs in
+  `docs/superpowers/specs/` first; if still unclear, flag it rather than
+  guessing.
 
 **Dropped from scope (2026-11-08):** auth/login (SS-5), by the professors
-and sponsors. Connecting to the real Aggregation Service/Core Database is
-not in scope this week; those come later per the steps above.
+and sponsors.

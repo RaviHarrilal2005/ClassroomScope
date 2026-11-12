@@ -111,11 +111,26 @@ To check it: a run shows aggregation `succeeded`, and
 `python -m pytest e2e -k "r1 or d1"` compares the API, the donut and
 the headline with `sentiment_results`.
 
-## 4. Dashboard fixes (Ravi)
+## 4. Dashboard (Ravi)
 
-Smaller things we found while testing:
+Built: the filter panel (date range, source type, stakeholder, topic and
+keyword search), Export CSV on the article table, the dark theme that
+follows the OS setting, filters and the open tab kept in the URL so a
+filtered view can be shared, and the "Sentiment by month" chart. The
+sentiment figures follow the filters because they are computed per
+request; a snapshot table, if one is added, has to keep that. The
+shortcuts are in the MVP table in README.md.
 
-- The filter panel and keyword search exist as MVPs (README, "MVP
-  features — come back to these"). The sentiment figures follow the
-  filters because they are computed per request; a snapshot table, if
-  one is added, has to keep that.
+## Still open
+
+- **Run the backend e2e suite once against the shared database.**
+  `backend/e2e/test_3_dashboard.py` now expects 5 charts. From `backend/`,
+  run `python -m pytest e2e`. It writes to the shared Supabase project
+  (see the end-to-end section of the README). Afterwards refresh
+  `docs/testing/e2e-test-report.md`, which predates the 5-chart check.
+- **Hand-label about 50 stance articles and compute Cohen's kappa.**
+  Nobody has checked the stance labels against human ones yet.
+- **Run the RoBERTa sentiment path through a full pipeline run.** Only
+  VADER has been checked on real articles (section 1).
+- **The known shortcuts** are the MVP table in README.md. Each row names
+  the shortcut, its ceiling, and the better version.
