@@ -17,12 +17,11 @@
  * of the reading mode it needs to hear the labels that carry the values.
  */
 import { Bar, BarChart, LabelList, Pie, PieChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
-import { BLUE, GREY, RED } from "./statusStyles";
 
 const SENTIMENTS = [
-  { field: "positive", name: "Positive", fill: "#2A6BB0", ink: "#fff" },
-  { field: "neutral", name: "Neutral", fill: GREY.border, ink: "var(--text)" },
-  { field: "negative", name: "Negative", fill: RED.fg, ink: "#fff" },
+  { field: "positive", name: "Positive", fill: "var(--chart-positive)", ink: "var(--chart-ink)" },
+  { field: "neutral", name: "Neutral", fill: "var(--chart-neutral)", ink: "var(--text)" },
+  { field: "negative", name: "Negative", fill: "var(--chart-negative)", ink: "var(--chart-ink)" },
 ];
 
 // Stance uses the same three colours: for reads like positive, against like negative.
@@ -112,7 +111,7 @@ export function TopTopicsBar({ topics }) {
           {/* Real topic names run to ~50 characters: a fixed width, wrapped, so a
               phone-width card keeps room for the bars. */}
           <YAxis type="category" dataKey="label" width={190} tick={WrappedTick} />
-          <Bar dataKey="count" fill={BLUE.fg}>
+          <Bar dataKey="count" fill="var(--chart-bar)">
             <LabelList dataKey="count" position="right" />
           </Bar>
         </BarChart>

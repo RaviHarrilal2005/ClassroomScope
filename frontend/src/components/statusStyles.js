@@ -13,11 +13,13 @@
  * vision deficiency.
  */
 
-export const GREY = { fg: "#4A4A4A", bg: "#ECECEC", border: "#D4D4D4" };
-export const BLUE = { fg: "#1F4E79", bg: "#E1EDF8", border: "#B9D4EC" };
-export const GREEN = { fg: "#1E6B3A", bg: "#E4F3E9", border: "#BFE0CB" };
-const AMBER = { fg: "#8A5A00", bg: "#FDF1DC", border: "#F0D9A8" };
-export const RED = { fg: "#A33A34", bg: "#FBE7E6", border: "#F0C4C1" };
+// Tokens from styles.css, so the badges follow the dark theme too.
+const tokens = (hue) => ({ fg: `var(--${hue})`, bg: `var(--${hue}-bg)`, border: `var(--${hue}-border)` });
+const GREY = tokens("grey");
+const BLUE = tokens("blue");
+const GREEN = tokens("green");
+const AMBER = tokens("amber");
+const RED = tokens("red");
 
 export const RUN_STATUS = {
   running: { ...BLUE, label: "running" },
