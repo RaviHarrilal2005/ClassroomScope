@@ -3,7 +3,7 @@
  *
  * Per the design doc (Section 3, "Why this structure"): every component
  * goes through this client rather than calling fetch() directly, so
- * auth headers, error handling, and response parsing live in one place.
+ * error handling and response parsing live in one place.
  *
  * STATUS:
  *   - getResults(filters) and searchComments(filters) are real: the
@@ -11,7 +11,7 @@
  *     /results is still a hardcoded placeholder.
  *   - The run endpoints below are real: they read pipeline_runs and
  *     pipeline_stage_runs, and return genuine rows.
- *   - Auth token attachment, retries, and export calls are NOT built yet.
+ *   - Retries and export calls are NOT built yet.
  */
 
 // VITE_API_URL lets two dev servers run side by side on other ports.
@@ -28,7 +28,6 @@ export class ApiError extends Error {
 }
 
 async function request(path, options = {}) {
-  // TODO: attach session token from auth context once SS-5 login exists
   let res;
   try {
     res = await fetch(`${BASE_URL}${path}`, options);
@@ -103,8 +102,6 @@ export async function getRun(runId) {
  * err.body.active_run_id says which one.
  */
 export async function startRun(triggerType = "manual", backlog = false) {
-  // TODO(auth): admin-only once login (SS-5) exists — the backend has the
-  // matching TODO on the endpoint.
   return request("/runs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

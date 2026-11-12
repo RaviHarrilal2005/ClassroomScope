@@ -10,8 +10,8 @@ STATUS:
   * /api/v1/search/comments — keyword search over article comments
   * The run store is Supabase when SUPABASE_URL / SUPABASE_KEY are set,
     in-memory otherwise — see build_run_store() below.
-  * Auth and the real data access layer are NOT connected yet — see the
-    TODOs below and docs/pipeline-coordinator.md.
+  * The real data access layer is NOT connected yet — see the TODOs
+    below and docs/pipeline-coordinator.md.
 """
 import logging
 import os

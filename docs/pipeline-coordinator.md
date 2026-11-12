@@ -512,7 +512,7 @@ fails if the deployed schema and the code drift apart.
   where it should return 409.
 - **No single-stage re-run yet.** Re-running just one stage needs to know
   which articles belonged to the run — see open question 3.
-- **No auth on `POST /api/v1/runs`.** Should be admin-only once login (SS-5) exists.
+- **No confirm step on `POST /api/v1/runs`.** Anyone who can reach the app can start a real run. Login (SS-5) was dropped from scope on 2026-11-08 by the professors and sponsors, so the fix is a confirm step or limiting runs to local use.
 - **Nothing schedules runs yet.** The `scheduled` trigger type is ready,
   but no scheduler calls it.
 - **A backlog run looks like a normal one in `pipeline_runs`.** Its
