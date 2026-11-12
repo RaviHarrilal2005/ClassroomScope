@@ -38,8 +38,8 @@ def test_d1_dashboard_shows_real_topics_and_sentiment(
     expect(page.get_by_text(f"{counted} of {total} matching article(s) have a topic; "
                             f"{unassigned} don't fit any topic yet.")).to_be_visible(timeout=PAGE_TIMEOUT)
 
-    # Sentiment, top topics, stance and readers' comments.
-    expect(page.locator("svg.recharts-surface")).to_have_count(4)
+    # Sentiment, top topics, stance, readers' comments and sentiment by month.
+    expect(page.locator("svg.recharts-surface")).to_have_count(5)
     topics = card(page, "Top topics")
     labels = topics.locator(".recharts-yAxis-tick-labels text")
     expect(labels).to_have_count(len(expected["items"]))

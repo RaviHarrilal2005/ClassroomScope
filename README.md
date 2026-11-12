@@ -31,11 +31,6 @@ building out the real views.
   a page that fetches real JSON from Flask and renders it. No mock data
   baked into the front end.
 
-## What's NOT built yet
-
-- A chart of sentiment by month — `/results` carries it; the stakeholder
-  and topic breakdowns are drawn
-
 ## Pipeline coordinator (in progress)
 
 `backend/orchestrator/` runs the agents in order —
@@ -131,7 +126,7 @@ The latest report: [docs/testing/e2e-test-report.md](docs/testing/e2e-test-repor
 cd frontend
 npm install
 npm run dev             # serves http://localhost:5173
-npm test                # the CSV export's tests (Node's built-in runner)
+npm test                # the CSV export's and URL state's tests (Node's built-in runner)
 ```
 
 Open `http://localhost:5173` with `python app.py` running — you should
@@ -149,28 +144,27 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 |---|---|---|---|
 | Filters | Corpus read from 4 tables and filtered in Python per request, behind a 60s cache (`orchestrator/corpus.py`) | Slows as the corpus grows; up to 60s stale after a run | Aggregation snapshot or a Postgres view/RPC |
 | Filters | One value per filter | Can't compare two stakeholders | Multi-select |
-| Filters | Not kept in the URL; nor is the Dashboard / Pipeline runs tab | A filtered view can't be shared, bookmarked or survive a refresh | Sync filters and view to the query string |
+| Filters | Filters and tab kept in the URL with `replaceState`; the tabs are buttons, not links; other query params (utm_*) are dropped, and a source, stakeholder or topic in a shared link that the corpus lacks is cleared without a notice | Back doesn't undo a filter change; a tab can't be opened in a new browser tab; a stale link quietly shows a wider view than it names | `pushState` for deliberate changes; tabs as `<a href>`; a notice naming what was cleared |
 | Filters | Topic options are the full list, not narrowed by the other filters | Some combinations give zero rows | Facet counts per option |
 | Filters | Classification merge: any classifier beats `baseline_keyword` | Hides disagreement between classifiers | Record a chosen classifier per article in the pipeline |
-| Filters | A request per filter change, no debounce or cancel (stale responses are dropped, not aborted) | Wasted requests while typing a date | Debounce dates; `AbortController` |
 | Article table | Every match rendered, no paging | Fine at hundreds, not thousands | Server-side paging |
 | Search | Case-insensitive substring, first match only | No ranking, stemming or phrases | Postgres full-text search (`tsvector`) with ranking |
 | Search | `*` acts as a wildcard (PostgREST has no escape for it) | `a*b` matches more than it says | Search through an RPC function |
 | Search | Comment search capped at the newest 50, no paging; article IDs sent in the URL | Can't browse all matches; breaks past ~1,500 articles | Paging, and an RPC taking the filters |
 | Aggregation | Sentiment figures recomputed from the cached corpus on every request; the pipeline stage checks they can be computed and stores nothing (`agents/aggregation/`) | No record of the figures per run, so runs can't be compared over time | A snapshot row per run |
 | Sentiment charts | Headline names a group or topic only at 20+ articles, a fixed cutoff (`MIN_ARTICLES_TO_NAME`, in `compute.py` and `VisualizationViews.jsx`) | Not a significance test: at 20 one article still moves a share 5 points | A confidence interval per share, named only when it clears the overall figure |
-| Sentiment charts | No chart of `sentiment_over_time`, though the API sends it | Can't see when coverage turned; today 184 of 323 articles are from Sept 2026, so it would be one spike | Draw it once months are filled more evenly |
+| Sentiment charts | Sentiment by month: a 100% column per calendar month, months with no articles kept as empty columns; wider than its card (about 20+ months, on any screen), it scrolls sideways and opens at the newest month | One old article adds an empty column for every month since; the % axis scrolls out of view; 32 months of data today fill 49 columns, so the date filter is the way to zoom | Bin by week or quarter to suit the date range; drop isolated old months |
 | Stance | One LLM call per article, never checked against human labels; the confidence is the model's own and is about 0.95 on nearly every article | Accuracy is unknown, and confidence can't separate sure labels from unsure ones | Hand-label a sample (say 50 articles) and report agreement (Cohen's kappa); drop or calibrate the confidence |
 | Stance | The article as a whole toward one target, "generative AI in education" | An article for AI tutoring but against AI essays gets one label | Stance per aspect; `stance_results.target` already holds the target per row |
 | Reader comments | Every comment counts once, pooled over the filtered articles | The few most-discussed articles set the share | Average per article, or show the spread |
 | Reader comments | Only articles from sources that publish comments have any | "How readers react" covers a narrow slice of the coverage | More comment sources (Supabase already has Reddit tables) |
-| Sentiment charts | No hover tooltips; every share is printed as text instead | Nothing to discover by hovering | Add if a chart ever drops its printed values |
-| Redesign | Light theme only; badge colours inline in `StatusBadge` | Ignores an OS dark-mode preference | `prefers-color-scheme` token set, badge colours as tokens |
+| Sentiment charts | Hover tooltips on the monthly and topic charts only, by mouse or touch; none on the donuts, which print every value | No tooltip by keyboard (`accessibilityLayer` is off); keyboard and screen-reader users get the printed values and the "Month by month" list | Recharts' `accessibilityLayer` once its `role="application"` stops hiding the printed labels from screen readers |
+| Redesign | Dark theme follows the OS setting only (`prefers-color-scheme` in `styles.css`) | No way to pick light or dark per site | A toggle that sets `data-theme` on `<html>` and is remembered |
 | Redesign | Topic chart labels wrap to two lines at most | Labels over ~56 characters clip | Measure text, or wrap to N lines |
-| Pipeline runs | All 20 recent runs listed; Start a run and Run on 5 stored articles have no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
+| Pipeline runs | All 20 recent runs listed; Start a run and Run on 5 stored articles have no confirm step, so anyone who can reach the app can start a real run | Long list on phones; one click runs the real pipeline | Cap the list; a confirm step, or limit runs to local use |
 | Pipeline runs | Run on stored articles always takes the 5 oldest analysis-ready articles (`BACKLOG_RUN_SIZE`) | Re-analyses the same 5 every time; can't pick which or how many | Take a size, or specific article IDs, in the request |
 | Export | Article list only, the columns the table has; built in the browser | No full text, comments, per-classifier results, column picker, or other formats; nothing ties a file to a pipeline run | Each is an add-on with no schema change, except export-by-run (`run_id` on the results tables, open question 3 in `docs/pipeline-coordinator.md`) |
-| Frontend | Only `src/csv.js` has tests (`npm test`, Node's built-in runner); no component tests | UI regressions caught by eye | Vitest + Testing Library |
+| Frontend | Only `src/csv.js` and `src/urlState.js` have tests (`npm test`, Node's built-in runner); no component tests | UI regressions caught by eye | Vitest + Testing Library |
 | End-to-end checks (`backend/e2e`) | Run against the team's shared Supabase project: 5 stored articles per run, real collection only with `--collect` | Every run writes to team data: run history, re-written classifications, sometimes new articles | A separate test database, selected with `E2E_ENV_FILE=.env.test` |
 | End-to-end checks (`backend/e2e`) | Dashboard checks find elements by their visible text and layout | A redesign that changes that text breaks D1–D3. The October redesign did, and they were rewritten for it | `data-testid` attributes on the elements the tests use |
 
@@ -179,7 +173,6 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 1. Work through the MVP table above
 2. Connect apiClient to the real Data Access Layer once SS-1/SS-2/SS-3
    are integrated (see WBS, tasks under 4.5)
-3. Add auth context once SS-5 login exists
 
 ## This week: initial site design refinement
 
@@ -194,7 +187,8 @@ layer rather than fetching independently.
 
 1. **FilterPanel** — built (MVP, see the table above): date range,
    source type, stakeholder, topic and keyword search, with filter
-   state in `ViewStateContext.jsx`.
+   state in `ViewStateContext.jsx`, mirrored in the URL with the open
+   tab (`src/urlState.js`) so a filtered view can be shared.
 2. **VisualizationViews** — built (`VisualizationViews.jsx`, using
    Recharts): a sentiment donut, a top-topics bar chart, and sentiment
    split bars by stakeholder and by topic under a headline naming the
@@ -225,6 +219,6 @@ layer rather than fetching independently.
 - If a component's requirements are ambiguous, check the design doc
   (Section 2) first; if still unclear, flag it rather than guessing.
 
-**Not in scope this week:** auth/login (SS-5)
-or connecting to the real Aggregation Service/Core Database — those
-come later per the steps above.
+**Dropped from scope (2026-11-08):** auth/login (SS-5), by the professors
+and sponsors. Connecting to the real Aggregation Service/Core Database is
+not in scope this week; those come later per the steps above.

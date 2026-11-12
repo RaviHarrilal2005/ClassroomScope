@@ -2,19 +2,27 @@
  * ClassroomScope styles: tokens on :root, base element styles, then
  * layout and components, in one file.
  *
- * The status colours mirror components/statusStyles.js, which the
- * charts and badges read from JS. Change both together.
+ * Every colour is a token here. Dark values follow the OS setting
+ * (prefers-color-scheme); they are chosen for the dark surface, not
+ * inverted, and the chart fills were checked for contrast and
+ * colour-blind separation against it. statusStyles.js and the charts
+ * refer to these tokens by name.
  *
  * Base element styles sit inside :where(), which carries no specificity,
  * so any class overrides them without !important.
  */
 
 :root {
+  color-scheme: light dark; /* native controls and scrollbars follow the OS */
+
   /* Status palette (statusStyles.js) */
   --blue: #1f4e79;
   --blue-bg: #e1edf8;
   --blue-border: #b9d4ec;
   --blue-hover: #173d60;
+  --blue-disabled: #9bb4c9;
+  --on-blue: #fff; /* text on a --blue fill */
+  --topbar: var(--blue);
   --green: #1e6b3a;
   --green-bg: #e4f3e9;
   --green-border: #bfe0cb;
@@ -40,6 +48,14 @@
   --on-blue-muted: #d6e4f2;
   --highlight: #ffe58f;
 
+  /* Charts (VisualizationViews.jsx). Sentiment poles pass the dataviz
+     validator in both modes; neutral is a grey midpoint by design. */
+  --chart-positive: #2a6bb0;
+  --chart-neutral: #d4d4d4;
+  --chart-negative: #a33a34;
+  --chart-ink: #fff; /* value text on a positive/negative fill */
+  --chart-bar: #1f4e79;
+
   /* Shape and space */
   --radius: 10px;
   --radius-sm: 6px;
@@ -59,6 +75,47 @@
   --text-md: 14px;
   --text-lg: 17px;
   --text-xl: 22px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --blue: #7fb0e8;
+    --blue-bg: #15273b;
+    --blue-border: #2b4a6b;
+    --blue-hover: #a3c7f0;
+    --blue-disabled: #4a6a8c;
+    --on-blue: #0d1b2a;
+    --topbar: #17304d;
+    --green: #7dcf9b;
+    --green-bg: #142a1d;
+    --green-border: #2a5638;
+    --amber: #e5b45a;
+    --amber-bg: #2e2310;
+    --amber-border: #5c4519;
+    --red: #f0928b;
+    --red-bg: #33191a;
+    --red-border: #6b3230;
+    --grey: #c2c7ce;
+    --grey-bg: #2a3038;
+    --grey-border: #48515c;
+
+    --page: #0f1318;
+    --surface: #181d24;
+    --subtle: #1e242c;
+    --line: #2e3640;
+    --line-soft: #242b34;
+    --control-border: #6f7b88;
+    --text: #e4e8ee;
+    --muted: #9ba6b3; /* 6.3:1 on --subtle */
+    --highlight: #6b5512;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+
+    --chart-positive: #4a8fdb;
+    --chart-neutral: #4b525b;
+    --chart-negative: #e0685f;
+    --chart-ink: #0f1318;
+    --chart-bar: #4a8fdb;
+  }
 }
 
 /* --- base ---------------------------------------------------------------- */
@@ -128,7 +185,7 @@
   padding: 8px 14px;
   font: inherit;
   font-weight: 600;
-  color: #fff;
+  color: var(--on-blue);
   background: var(--blue);
   border: 1px solid var(--blue);
   border-radius: var(--radius-sm);
@@ -138,8 +195,8 @@
   background: var(--blue-hover);
 }
 :where(button:disabled) {
-  background: #9bb4c9;
-  border-color: #9bb4c9;
+  background: var(--blue-disabled);
+  border-color: var(--blue-disabled);
   cursor: not-allowed;
 }
 :where(button.secondary) {
@@ -165,7 +222,7 @@
   gap: var(--space-3) var(--space-5);
   padding: var(--space-3) var(--space-5);
   color: #fff;
-  background: var(--blue);
+  background: var(--topbar);
 }
 .brand {
   display: flex;
@@ -201,7 +258,7 @@
   background: rgb(255 255 255 / 12%);
 }
 .tab[aria-pressed="true"] {
-  color: var(--blue);
+  color: var(--topbar);
   background: #fff;
   border-color: #fff;
 }
@@ -337,6 +394,14 @@
 .chart {
   max-width: 760px;
 }
+/* The monthly chart scrolls sideways past ~20 months; the 760px cap would make it scroll on a desktop too. */
+.chart:has(.chart-scroll) {
+  max-width: none;
+}
+/* Recharts' default axis text is a fixed #666: too dim on the dark card. */
+.recharts-cartesian-axis-tick-value {
+  fill: var(--muted);
+}
 .chart-donut {
   max-width: 480px;
   margin: 0 auto;
@@ -346,9 +411,19 @@
 .chart-donut .recharts-surface {
   overflow: visible;
 }
+.recharts-wrapper g:focus {
+  outline: none;
+}
 .recharts-text {
   font-family: var(--font);
   font-size: var(--text-sm);
+}
+/* Recharts draws a white gap round each slice and grey bar labels; theme both. */
+.recharts-pie-sector path {
+  stroke: var(--surface);
+}
+.recharts-label-list .recharts-label {
+  fill: var(--text);
 }
 .split-row + .split-row {
   margin-top: var(--space-3);
@@ -400,6 +475,32 @@
   height: 10px;
   border-radius: 2px;
   vertical-align: -1px;
+}
+/* rtl so a chart wider than a phone opens scrolled to its newest months. */
+.chart-scroll {
+  overflow-x: auto;
+  direction: rtl;
+}
+.chart-scroll > * {
+  direction: ltr;
+}
+.chart-tooltip {
+  max-width: 260px;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.chart-tooltip p {
+  margin: 0;
+}
+/* A line key, not a box: at tooltip size a filled square outweighs the number. */
+.chart-tooltip .swatch {
+  height: 3px;
+  vertical-align: 3px;
 }
 .headline {
   display: grid;
