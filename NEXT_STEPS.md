@@ -103,9 +103,9 @@ articles: the share (the donut), the same broken down by month, topic
 and stakeholder, and the most negative stakeholder and topic
 (`agents/aggregation/compute.py`). The aggregation stage computes them
 on every run, so a broken table fails the stage. The dashboard draws
-the stakeholder and topic breakdowns under a headline, and the article
-table has a sentiment column. Still open: a chart of the monthly
-breakdown and a snapshot per run (README, "MVP features").
+the monthly, stakeholder and topic breakdowns under a headline, and the
+article table has a sentiment column. Still open: a snapshot per run
+(README, "MVP features").
 
 To check it: a run shows aggregation `succeeded`, and
 `python -m pytest e2e -k "r1 or d1"` compares the API, the donut and

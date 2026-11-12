@@ -346,6 +346,9 @@
 .chart-donut .recharts-surface {
   overflow: visible;
 }
+.recharts-wrapper g:focus {
+  outline: none;
+}
 .recharts-text {
   font-family: var(--font);
   font-size: var(--text-sm);
@@ -400,6 +403,32 @@
   height: 10px;
   border-radius: 2px;
   vertical-align: -1px;
+}
+/* rtl so a chart wider than a phone opens scrolled to its newest months. */
+.chart-scroll {
+  overflow-x: auto;
+  direction: rtl;
+}
+.chart-scroll > * {
+  direction: ltr;
+}
+.chart-tooltip {
+  max-width: 260px;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.chart-tooltip p {
+  margin: 0;
+}
+/* A line key, not a box: at tooltip size a filled square outweighs the number. */
+.chart-tooltip .swatch {
+  height: 3px;
+  vertical-align: 3px;
 }
 .headline {
   display: grid;
