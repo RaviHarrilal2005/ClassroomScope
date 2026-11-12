@@ -25,7 +25,7 @@ export function monthlyShares(rows, step = 1) {
 }
 
 /** Past this many months the chart bins by quarter, so 49 months don't scroll sideways. */
-export const SPAN_LIMIT = 24;
+export const SPAN_LIMIT = 20; // 20 columns = 768px, fits the card at 1280
 
 /** Calendar months from the first label to the last, both included; 0 for no rows. */
 export function monthSpan(rows) {

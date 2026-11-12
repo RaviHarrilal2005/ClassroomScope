@@ -4,7 +4,7 @@
  * Each chart takes plain data rather than the /results payload, so the
  * caller decides what to draw.
  *
- * Every value is printed as text (on the chart, or in the month-by-month
+ * Every value is printed as text (on the chart, or in the month-by-month (or quarter-by-quarter)
  * list under the monthly one), so colour is never the only signal — the
  * same rule statusStyles.js follows for badges.
  *
@@ -13,7 +13,7 @@
  * Neutral is light so the 70%-neutral bars show their lean, not a grey wall.
  *
  * Tooltips are a mouse and touch extra: what they show is also printed,
- * or in the month-by-month list under the monthly chart. So
+ * or in the month-by-month (or quarter-by-quarter) list under the monthly chart. So
  * accessibilityLayer is off: Recharts' default would make each chart a
  * tab stop with role="application", which switches a screen reader out of
  * the reading mode it needs to hear the labels that carry the values.
