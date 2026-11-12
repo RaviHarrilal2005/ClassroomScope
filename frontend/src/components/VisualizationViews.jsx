@@ -4,7 +4,7 @@
  * Each chart takes plain data rather than the /results payload, so the
  * caller decides what to draw.
  *
- * Every value is printed as text (on the chart, or in the month-by-month
+ * Every value is printed as text (on the chart, or in the month-by-month (or quarter-by-quarter)
  * list under the monthly one), so colour is never the only signal — the
  * same rule statusStyles.js follows for badges.
  *
@@ -13,7 +13,7 @@
  * Neutral is light so the 70%-neutral bars show their lean, not a grey wall.
  *
  * Tooltips are a mouse and touch extra: what they show is also printed,
- * or in the month-by-month list under the monthly chart. So
+ * or in the month-by-month (or quarter-by-quarter) list under the monthly chart. So
  * accessibilityLayer is off: Recharts' default would make each chart a
  * tab stop with role="application", which switches a screen reader out of
  * the reading mode it needs to hear the labels that carry the values.
@@ -203,26 +203,33 @@ const monthDate = (label) => new Date(`${label}-01T00:00`);
 /** "2026-09" -> "September 2026". */
 export const monthName = (label) => monthDate(label).toLocaleString("en", { month: "long", year: "numeric" });
 
-/** Under each column: its article count, the month, and the year at both ends and every January. */
-function MonthTick({ x, y, payload, index, months }) {
+/** A date's quarter: "Q3". */
+const quarterOf = (d) => `Q${Math.floor(d.getMonth() / 3) + 1}`;
+
+/** "2026-07" -> "Q3 2026" when quarterly, else "July 2026". */
+export const periodName = (label, quarterly) =>
+  quarterly ? `${quarterOf(monthDate(label))} ${monthDate(label).getFullYear()}` : monthName(label);
+
+/** Under each column: its article count, the month (or quarter), and the year at both ends and every January. */
+function MonthTick({ x, y, payload, index, months, quarterly }) {
   const { total } = months[index];
   const d = monthDate(payload.value);
   return (
     <text x={x} y={y} textAnchor="middle" className="recharts-text" style={{ fill: "var(--muted)" }}>
       <tspan x={x} dy="0.8em" style={total >= MIN_ARTICLES_TO_NAME ? { fill: "var(--text)" } : undefined}>{total}</tspan>
-      <tspan x={x} dy="1.3em">{d.toLocaleString("en", { month: "short" })}</tspan>
+      <tspan x={x} dy="1.3em">{quarterly ? quarterOf(d) : d.toLocaleString("en", { month: "short" })}</tspan>
       {(index === 0 || index === months.length - 1 || d.getMonth() === 0) && <tspan x={x} dy="1.2em">{d.getFullYear()}</tspan>}
     </text>
   );
 }
 
 /** The hovered month's count and shares, top of the column first. */
-function MonthTip({ active, payload }) {
+function MonthTip({ active, payload, quarterly }) {
   if (!active || !payload?.length) return null;
   const m = payload[0].payload;
   return (
     <div className="chart-tooltip">
-      <p><strong>{monthName(m.label)}</strong> · {m.total} article(s)</p>
+      <p><strong>{periodName(m.label, quarterly)}</strong> · {m.total} article(s)</p>
       {m.total > 0 && SENTIMENTS.map(({ field, name, fill }) => (
         <p key={field}>
           <span className="swatch" style={{ background: fill }} aria-hidden="true" /> <strong>{percent(m[field])}</strong> {name}
@@ -234,23 +241,24 @@ function MonthTip({ active, payload }) {
 
 /**
  * sentiment_over_time ([{ label: "YYYY-MM", ...counts }]) as one 100%
- * column per month, negative at the bottom. Shares, not counts, so one
- * busy month doesn't flatten the rest; each month's count is printed under
- * its column, and months under MIN_ARTICLES_TO_NAME are faded. Too many
+ * column per month (per quarter when `quarterly`, with rows already
+ * bucketed by bucketByQuarter), negative at the bottom. Shares, not counts,
+ * so one busy month doesn't flatten the rest; each column's count is printed
+ * under it, and columns under MIN_ARTICLES_TO_NAME are faded. Too many
  * months for a phone scroll sideways rather than squeeze the labels.
  */
-export function SentimentByMonth({ rows }) {
-  const months = monthlyShares(rows);
+export function SentimentByMonth({ rows, quarterly = false }) {
+  const months = monthlyShares(rows, quarterly ? 3 : 1);
   return (
     <div className="chart">
       <div className="chart-scroll">
         <ResponsiveContainer width="100%" height={270} minWidth={months.length * 36 + 48}>
           <BarChart data={months} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} accessibilityLayer={false}>
             <XAxis dataKey="label" interval={0} height={56} tickLine={false} axisLine={false}
-                   tick={(props) => <MonthTick {...props} months={months} />} />
+                   tick={(props) => <MonthTick {...props} months={months} quarterly={quarterly} />} />
             <YAxis domain={[0, 1]} ticks={[0, 0.5, 1]} tickFormatter={percent} width={40}
                    tickLine={false} axisLine={false} />
-            <Tooltip content={MonthTip} cursor={HOVER_BAND} />
+            <Tooltip content={(props) => <MonthTip {...props} quarterly={quarterly} />} cursor={HOVER_BAND} />
             {SPLIT_ORDER.map(({ field, fill }) => (
               // A surface-coloured stroke is the 2px gap between segments.
               <Bar key={field} dataKey={field} stackId="month" fill={fill} stroke="var(--surface)" strokeWidth={2}

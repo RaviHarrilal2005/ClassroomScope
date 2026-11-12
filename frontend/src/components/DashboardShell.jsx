@@ -12,13 +12,14 @@
  * stance share and readers' comment sentiment (agents/aggregation/compute.py).
  * Export is the article table's Export CSV button (src/csv.js).
  */
+import { bucketByQuarter, monthSpan, SPAN_LIMIT } from "../months";
 import { useViewState } from "../state/ViewStateContext";
 import AdminConsole from "./AdminConsole";
 import ArticleTable from "./ArticleTable";
 import CommentResults from "./CommentResults";
 import FilterPanel from "./FilterPanel";
 import { humanize } from "./text";
-import { STANCES, SentimentByMonth, SentimentDonut, SentimentSplitBar, TopTopicsBar, monthName, percent } from "./VisualizationViews";
+import { STANCES, SentimentByMonth, SentimentDonut, SentimentSplitBar, TopTopicsBar, periodName, percent } from "./VisualizationViews";
 
 const VIEWS = [
   { id: "dashboard", label: "Dashboard" },
@@ -63,6 +64,8 @@ export default function DashboardShell() {
 
 function Dashboard() {
   const { results, loading, error } = useViewState();
+  // Long spans bin by quarter so the monthly columns don't scroll sideways.
+  const quarterly = (results ? monthSpan(results.sentiment_over_time) : 0) > SPAN_LIMIT;
 
   return (
     <div className="layout">
@@ -109,8 +112,9 @@ function Dashboard() {
             {results.analysed > 0 && (
               <>
                 <section className="card">
-                  <h2>Sentiment by month</h2>
-                  <ByMonth rows={results.sentiment_over_time} />
+                  <h2>Sentiment by {quarterly ? "quarter" : "month"}</h2>
+                  <ByMonth rows={quarterly ? bucketByQuarter(results.sentiment_over_time) : results.sentiment_over_time}
+                           quarterly={quarterly} />
                 </section>
 
                 <section className="card">
@@ -210,18 +214,19 @@ function ByStakeholder({ results }) {
 }
 
 /** The month-by-month list repeats the chart's numbers for keyboard, screen reader and touch. */
-function ByMonth({ rows }) {
+function ByMonth({ rows, quarterly }) {
   if (rows.length === 0) return <p className="empty-note">None of the matching articles has a publication date.</p>;
+  const period = quarterly ? "quarter" : "month";
   return (
     <>
       <p className="card-subtitle">
-        Share of each month's articles that are negative, neutral and positive. The number under each
-        month is its article count; hover or tap a month for its shares, or open the list below.
+        Share of each {period}'s articles that are negative, neutral and positive. The number under each
+        {" "}{period} is its article count; hover or tap a {period} for its shares, or open the list below.
       </p>
-      <SentimentByMonth rows={rows} />
+      <SentimentByMonth rows={rows} quarterly={quarterly} />
       <details>
-        <summary>Month by month</summary>
-        <SentimentSplitBar rows={rows.map((r) => ({ ...r, label: monthName(r.label) }))} />
+        <summary>{quarterly ? "Quarter by quarter" : "Month by month"}</summary>
+        <SentimentSplitBar rows={rows.map((r) => ({ ...r, label: periodName(r.label, quarterly) }))} />
       </details>
     </>
   );
