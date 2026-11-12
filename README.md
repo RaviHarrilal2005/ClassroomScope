@@ -149,7 +149,7 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 |---|---|---|---|
 | Filters | Corpus read from 4 tables and filtered in Python per request, behind a 60s cache (`orchestrator/corpus.py`) | Slows as the corpus grows; up to 60s stale after a run | Aggregation snapshot or a Postgres view/RPC |
 | Filters | One value per filter | Can't compare two stakeholders | Multi-select |
-| Filters | Filters and tab kept in the URL with `replaceState`; the tabs are buttons, not links | Back doesn't undo a filter change; a tab can't be opened in a new browser tab | `pushState` for deliberate changes; tabs as `<a href>` |
+| Filters | Filters and tab kept in the URL with `replaceState`; the tabs are buttons, not links; other query params (utm_*) are dropped, and a source, stakeholder or topic in a shared link that the corpus lacks is cleared without a notice | Back doesn't undo a filter change; a tab can't be opened in a new browser tab; a stale link quietly shows a wider view than it names | `pushState` for deliberate changes; tabs as `<a href>`; a notice naming what was cleared |
 | Filters | Topic options are the full list, not narrowed by the other filters | Some combinations give zero rows | Facet counts per option |
 | Filters | Classification merge: any classifier beats `baseline_keyword` | Hides disagreement between classifiers | Record a chosen classifier per article in the pipeline |
 | Article table | Every match rendered, no paging | Fine at hundreds, not thousands | Server-side paging |

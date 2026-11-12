@@ -33,6 +33,8 @@ async function request(path, options = {}) {
   try {
     res = await fetch(`${BASE_URL}${path}`, options);
   } catch (cause) {
+    // A caller that cancelled the request wants the AbortError, not "backend down".
+    if (options.signal?.aborted) throw cause;
     // fetch only rejects on a transport failure, which almost always means
     // the backend is not running. Saying so beats "Failed to fetch".
     throw new ApiError(

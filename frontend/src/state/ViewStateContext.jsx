@@ -131,9 +131,10 @@ export function ViewStateProvider({ children }) {
   }, [filters, loadResults, loadComments]);
 
   // The query string mirrors the filters and tab. replaceState, so a
-  // filter change doesn't add a Back-button step.
+  // filter change doesn't add a Back-button step. Params the page doesn't
+  // own (utm_*) are dropped; the #hash is kept.
   useEffect(() => {
-    window.history.replaceState(null, "", toQuery(filters, view) || window.location.pathname);
+    window.history.replaceState(null, "", (toQuery(filters, view) || window.location.pathname) + window.location.hash);
   }, [filters, view]);
 
   /** Merge a change into the filters, e.g. setFilters({ stakeholder: "educators" }). */
