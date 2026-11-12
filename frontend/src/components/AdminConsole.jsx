@@ -20,9 +20,6 @@
  *     and whether it was a stub (`agent`, `stub`), so the tag and the note
  *     under the table say exactly which. Runs from before those columns
  *     have `stub: null` and get no tag.
- *
- * TODO(auth): the whole panel should be admin-only once login (SS-5)
- * exists. The backend has the matching TODO on POST /runs.
  */
 import { useViewState } from "../state/ViewStateContext";
 import StatusBadge from "./StatusBadge";

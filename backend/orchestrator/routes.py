@@ -35,7 +35,6 @@ def create_runs_blueprint(runner: BackgroundRunner) -> Blueprint:
 
     @bp.post("")
     def start_run():
-        # TODO(auth): restrict to the Administrator role once login (SS-5) exists.
         body = request.get_json(silent=True) or {}
         trigger_type = body.get("trigger_type", "manual")
         if trigger_type not in TRIGGER_TYPES:

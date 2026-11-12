@@ -167,7 +167,7 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | Sentiment charts | No hover tooltips; every share is printed as text instead | Nothing to discover by hovering | Add if a chart ever drops its printed values |
 | Redesign | Light theme only; badge colours inline in `StatusBadge` | Ignores an OS dark-mode preference | `prefers-color-scheme` token set, badge colours as tokens |
 | Redesign | Topic chart labels wrap to two lines at most | Labels over ~56 characters clip | Measure text, or wrap to N lines |
-| Pipeline runs | All 20 recent runs listed; Start a run and Run on 5 stored articles have no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
+| Pipeline runs | All 20 recent runs listed; Start a run and Run on 5 stored articles have no confirm step, so anyone who can reach the app can start a real run | Long list on phones; one click runs the real pipeline | Cap the list; a confirm step, or limit runs to local use |
 | Pipeline runs | Run on stored articles always takes the 5 oldest analysis-ready articles (`BACKLOG_RUN_SIZE`) | Re-analyses the same 5 every time; can't pick which or how many | Take a size, or specific article IDs, in the request |
 | Export | Article list only, the columns the table has; built in the browser | No full text, comments, per-classifier results, column picker, or other formats; nothing ties a file to a pipeline run | Each is an add-on with no schema change, except export-by-run (`run_id` on the results tables, open question 3 in `docs/pipeline-coordinator.md`) |
 | Frontend | Only `src/csv.js` has tests (`npm test`, Node's built-in runner); no component tests | UI regressions caught by eye | Vitest + Testing Library |
@@ -179,7 +179,6 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 1. Work through the MVP table above
 2. Connect apiClient to the real Data Access Layer once SS-1/SS-2/SS-3
    are integrated (see WBS, tasks under 4.5)
-3. Add auth context once SS-5 login exists
 
 ## This week: initial site design refinement
 
@@ -225,6 +224,6 @@ layer rather than fetching independently.
 - If a component's requirements are ambiguous, check the design doc
   (Section 2) first; if still unclear, flag it rather than guessing.
 
-**Not in scope this week:** auth/login (SS-5)
-or connecting to the real Aggregation Service/Core Database — those
-come later per the steps above.
+**Dropped from scope (2026-11-08):** auth/login (SS-5), by the professors
+and sponsors. Connecting to the real Aggregation Service/Core Database is
+not in scope this week; those come later per the steps above.
