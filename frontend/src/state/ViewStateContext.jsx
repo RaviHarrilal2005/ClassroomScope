@@ -150,7 +150,10 @@ export function ViewStateProvider({ children }) {
   }, []);
 
   /** Merge a change into the filters, e.g. setFilters({ stakeholder: "educators" }). */
-  const setFilters = useCallback((patch) => setFilterState((current) => ({ ...current, ...patch })), []);
+  const setFilters = useCallback((patch) => {
+    setFilterState((current) => ({ ...current, ...patch }));
+    setIgnoredFilters((current) => (Object.keys(current).length ? {} : current));
+  }, []);
   const clearFilters = useCallback(() => {
     setFilterState(EMPTY_FILTERS);
     setIgnoredFilters({});

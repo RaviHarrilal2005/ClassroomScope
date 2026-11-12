@@ -126,14 +126,18 @@ const FILTER_NAMES = { source_type: "source type", stakeholder: "stakeholder", t
 
 /**
  * Says which link values were dropped because the corpus lacks them. The
- * container stays in the page so the status is announced when it fills.
+ * empty status container renders first and the text after, so a screen
+ * reader announces it even when it was set before this panel mounted
+ * (a link that opens on the Pipeline runs tab).
  */
 function IgnoredNotice() {
   const { ignoredFilters, dismissIgnored } = useViewState();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const names = Object.entries(ignoredFilters);
   return (
     <div className="ignored-notice" role="status">
-      {names.length > 0 && (
+      {mounted && names.length > 0 && (
         <div className="notice">
           <p>Cleared, not in the data: {names.map(([key, value]) => `${FILTER_NAMES[key]} “${value}”`).join(", ")}.</p>
           <button type="button" className="secondary" onClick={dismissIgnored}>
