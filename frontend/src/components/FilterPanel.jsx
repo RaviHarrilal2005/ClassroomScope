@@ -135,7 +135,7 @@ function IgnoredNotice() {
     <div className="ignored-notice" role="status">
       {names.length > 0 && (
         <div className="notice">
-          <p>Ignored from the link: {names.map(([key, value]) => `${FILTER_NAMES[key]} “${value}”`).join(", ")}.</p>
+          <p>Cleared, not in the data: {names.map(([key, value]) => `${FILTER_NAMES[key]} “${value}”`).join(", ")}.</p>
           <button type="button" className="secondary" onClick={dismissIgnored}>
             Dismiss
           </button>

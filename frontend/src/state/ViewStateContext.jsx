@@ -140,21 +140,21 @@ export function ViewStateProvider({ children }) {
     window.history.replaceState(null, "", tabHref(window.location.pathname, filters, view) + window.location.hash);
   }, [filters, view]);
 
-  // Back and Forward re-read the URL. Only state is set here, so the
-  // effect above writes the same URL back and nothing new is pushed.
+  // Back and Forward switch the tab only: the filters live on the page, not
+  // in history, so the effect above rewrites that entry's URL with the
+  // current ones and nothing new is pushed.
   useEffect(() => {
-    const onPopState = () => {
-      const parsed = parseQuery(window.location.search);
-      setFilterState(parsed.filters);
-      setViewState(parsed.view);
-    };
+    const onPopState = () => setViewState(parseQuery(window.location.search).view);
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
   /** Merge a change into the filters, e.g. setFilters({ stakeholder: "educators" }). */
   const setFilters = useCallback((patch) => setFilterState((current) => ({ ...current, ...patch })), []);
-  const clearFilters = useCallback(() => setFilterState(EMPTY_FILTERS), []);
+  const clearFilters = useCallback(() => {
+    setFilterState(EMPTY_FILTERS);
+    setIgnoredFilters({});
+  }, []);
 
   // A tab is a page of its own, so switching pushes a history entry (Back returns to the last tab).
   const setView = useCallback(
