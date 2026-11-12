@@ -31,11 +31,6 @@ building out the real views.
   a page that fetches real JSON from Flask and renders it. No mock data
   baked into the front end.
 
-## What's NOT built yet
-
-- A chart of sentiment by month — `/results` carries it; the stakeholder
-  and topic breakdowns are drawn
-
 ## Pipeline coordinator (in progress)
 
 `backend/orchestrator/` runs the agents in order —
@@ -159,12 +154,12 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | Search | Comment search capped at the newest 50, no paging; article IDs sent in the URL | Can't browse all matches; breaks past ~1,500 articles | Paging, and an RPC taking the filters |
 | Aggregation | Sentiment figures recomputed from the cached corpus on every request; the pipeline stage checks they can be computed and stores nothing (`agents/aggregation/`) | No record of the figures per run, so runs can't be compared over time | A snapshot row per run |
 | Sentiment charts | Headline names a group or topic only at 20+ articles, a fixed cutoff (`MIN_ARTICLES_TO_NAME`, in `compute.py` and `VisualizationViews.jsx`) | Not a significance test: at 20 one article still moves a share 5 points | A confidence interval per share, named only when it clears the overall figure |
-| Sentiment charts | No chart of `sentiment_over_time`, though the API sends it | Can't see when coverage turned; today 184 of 323 articles are from Sept 2026, so it would be one spike | Draw it once months are filled more evenly |
+| Sentiment charts | Sentiment by month: a 100% column per calendar month, months with no articles kept as empty columns; wider than a phone, it scrolls sideways and opens at the newest month | One old article adds an empty column for every month since; on a phone the % axis scrolls out of view | Bin by week or quarter to suit the date range; drop isolated old months |
 | Stance | One LLM call per article, never checked against human labels; the confidence is the model's own and is about 0.95 on nearly every article | Accuracy is unknown, and confidence can't separate sure labels from unsure ones | Hand-label a sample (say 50 articles) and report agreement (Cohen's kappa); drop or calibrate the confidence |
 | Stance | The article as a whole toward one target, "generative AI in education" | An article for AI tutoring but against AI essays gets one label | Stance per aspect; `stance_results.target` already holds the target per row |
 | Reader comments | Every comment counts once, pooled over the filtered articles | The few most-discussed articles set the share | Average per article, or show the spread |
 | Reader comments | Only articles from sources that publish comments have any | "How readers react" covers a narrow slice of the coverage | More comment sources (Supabase already has Reddit tables) |
-| Sentiment charts | No hover tooltips; every share is printed as text instead | Nothing to discover by hovering | Add if a chart ever drops its printed values |
+| Sentiment charts | Hover tooltips on the monthly and topic charts only, by mouse or touch; none on the donuts, which print every value | No tooltip by keyboard (`accessibilityLayer` is off); keyboard and screen-reader users get the printed values and the "Month by month" list | Recharts' `accessibilityLayer` once its `role="application"` stops hiding the printed labels from screen readers |
 | Redesign | Light theme only; badge colours inline in `StatusBadge` | Ignores an OS dark-mode preference | `prefers-color-scheme` token set, badge colours as tokens |
 | Redesign | Topic chart labels wrap to two lines at most | Labels over ~56 characters clip | Measure text, or wrap to N lines |
 | Pipeline runs | All 20 recent runs listed; Start a run and Run on 5 stored articles have no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
