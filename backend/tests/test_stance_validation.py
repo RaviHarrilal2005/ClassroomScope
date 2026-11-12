@@ -69,3 +69,47 @@ def test_confusion_matrix_has_human_as_rows_and_model_as_columns(tmp_path):
     result = kit.score(str(path), [article(1, "favor")])
     assert result["matrix"]["against"]["favor"] == 1
     assert result["matrix"]["favor"]["against"] == 0
+
+
+def _write(path, rows, encoding="utf-8", delimiter=","):
+    with open(path, "w", newline="", encoding=encoding) as f:
+        writer = csv.writer(f, delimiter=delimiter)
+        writer.writerow(kit.COLUMNS)
+        writer.writerows(rows)
+
+
+def test_sample_csv_neutralises_spreadsheet_formulas(tmp_path):
+    path = tmp_path / "sample.csv"
+    kit.write_sample_csv([article(1, content="-2 degrees"), {**article(2), "title": "=HYPERLINK(\"x\")"}], str(path))
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        rows = {r["article_id"]: r for r in csv.DictReader(f)}
+    assert rows["1"]["excerpt"] == "'-2 degrees" and rows["2"]["title"].startswith("'=")
+
+
+def test_score_reads_what_excel_saves_cp1252_and_semicolons(tmp_path):
+    path = tmp_path / "labelled.csv"
+    _write(path, [[1, "It’s a title", "s", "u", "e", "favor"]], encoding="cp1252", delimiter=";")
+    assert kit.score(str(path), [article(1, "favor")])["compared"] == 1
+
+
+def test_score_names_the_missing_column(tmp_path):
+    path = tmp_path / "labelled.csv"
+    path.write_text("id,label\n1,favor\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="article_id"):
+        kit.score(str(path), [article(1)])
+
+
+def test_score_lists_unknown_labels_counts_repeats_once_and_survives_a_miscased_model_stance(tmp_path):
+    path = tmp_path / "labelled.csv"
+    _write(path, [[1, "t", "s", "u", "e", "for"], [2, "t", "s", "u", "e", "favour"],
+                  [3, "t", "s", "u", "e", "against"], [3, "t", "s", "u", "e", "favor"],
+                  [4, "t", "s", "u", "e", "favor"]])
+    result = kit.score(str(path), [article(1), article(2), article(3, "against"), article(4, "Favor")])
+    assert result["unknown_labels"] == [("1", "for"), ("2", "favour")]
+    assert (result["compared"], result["duplicate"], result["no_model_stance"]) == (1, 1, 1)
+
+
+def test_one_label_throughout_is_reported_as_undefined_kappa(tmp_path):
+    path = tmp_path / "labelled.csv"
+    _write(path, [[1, "t", "s", "u", "e", "favor"], [2, "t", "s", "u", "e", "favor"]])
+    assert kit.score(str(path), [article(1), article(2)])["kappa_undefined"] is True
