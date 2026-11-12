@@ -94,7 +94,18 @@ To check it: a run shows `stance` and `comment_sentiment` as
 `python -m agents.stance.stance_agent --save` from `backend/`.
 
 Open: nobody has checked the stance labels against human ones yet
-(README, "MVP features").
+(README, "MVP features"). The kit to do it is ready; to run it, from `backend/`:
+
+1. `python -m agents.stance.validation sample --n 50 --out stance_sample.csv`
+   (reads Supabase, SELECT only; the CSV has no model stance in it).
+2. Fill `human_stance` (favor, against or neutral) in a spreadsheet, without
+   opening the dashboard's stance chart, the article table's stance column or
+   `stance_results` first. Use the label definitions in `build_prompt`
+   (`agents/stance/stance_agent.py`) so you and the model judge by the same
+   criteria. Save as `stance_sample_labelled.csv` ("CSV UTF-8" in Excel; plain
+   CSV works too). `score` lists any label it doesn't recognise.
+3. `python -m agents.stance.validation score stance_sample_labelled.csv` prints
+   accuracy, Cohen's kappa, the confusion matrix, and how many rows were skipped.
 
 ## 3. Aggregation: done, check it on a real run (Ravi)
 
