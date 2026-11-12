@@ -50,6 +50,7 @@ export default function FilterPanel() {
         setFilters({ q });
       }}
     >
+      <IgnoredNotice />
       <h2>Filters</h2>
 
       <div className="field">
@@ -118,6 +119,29 @@ export default function FilterPanel() {
         Clear filters
       </button>
     </form>
+  );
+}
+
+const FILTER_NAMES = { source_type: "source type", stakeholder: "stakeholder", topic: "topic" };
+
+/**
+ * Says which link values were dropped because the corpus lacks them. The
+ * container stays in the page so the status is announced when it fills.
+ */
+function IgnoredNotice() {
+  const { ignoredFilters, dismissIgnored } = useViewState();
+  const names = Object.entries(ignoredFilters);
+  return (
+    <div className="ignored-notice" role="status">
+      {names.length > 0 && (
+        <div className="notice">
+          <p>Cleared, not in the data: {names.map(([key, value]) => `${FILTER_NAMES[key]} “${value}”`).join(", ")}.</p>
+          <button type="button" className="secondary" onClick={dismissIgnored}>
+            Dismiss
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

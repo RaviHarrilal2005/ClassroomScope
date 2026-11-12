@@ -38,18 +38,28 @@ export function toQuery(filters, view) {
   return query ? `?${query}` : "";
 }
 
+/** The page's URL for a tab with these filters, for a tab link's href. */
+export function tabHref(pathname, filters, view) {
+  return pathname + toQuery(filters, view);
+}
+
 /**
- * The filters without dropdown values missing from the corpus's options
- * (/results filter_options). Returns the same object when nothing is
- * dropped. An empty option list (no corpus, e.g. run_dev_server.py) proves
- * nothing, so it drops nothing.
+ * The dropdown values in the filters that are missing from the corpus's
+ * options (/results filter_options), by filter name. An empty option list
+ * (no corpus, e.g. run_dev_server.py) proves nothing, so it names nothing.
  */
-export function keepKnown(filters, options) {
+export function unknownFilters(filters, options) {
   const known = {
     source_type: options?.source_types,
     stakeholder: options?.stakeholders,
     topic: options?.topics?.map((t) => t.id),
   };
   const unknown = Object.keys(known).filter((key) => filters[key] && known[key]?.length && !known[key].includes(filters[key]));
-  return unknown.length ? { ...filters, ...Object.fromEntries(unknown.map((key) => [key, ""])) } : filters;
+  return Object.fromEntries(unknown.map((key) => [key, filters[key]]));
+}
+
+/** The filters without the values unknownFilters names. Returns the same object when nothing is dropped. */
+export function keepKnown(filters, options) {
+  const dropped = Object.fromEntries(Object.keys(unknownFilters(filters, options)).map((key) => [key, ""]));
+  return Object.keys(dropped).length ? { ...filters, ...dropped } : filters;
 }
