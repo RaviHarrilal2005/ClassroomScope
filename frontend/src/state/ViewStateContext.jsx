@@ -5,9 +5,10 @@
  * from state instead of fetching data themselves.
  *
  * STATUS:
- *   - filters: held here; results and comment search reload whenever
- *     they change. /results serves real articles, topic counts and
- *     sentiment figures.
+ *   - filters and the open tab: held here and mirrored in the query
+ *     string (src/urlState.js); results and comment search reload
+ *     whenever the filters change. /results serves real articles, topic
+ *     counts and sentiment figures.
  *   - run status + the run-status poller: real, reading pipeline_runs.
  */
 import {
@@ -19,6 +20,7 @@ import {
   useState,
 } from "react";
 import { getResults, getRun, getRuns, searchComments, startRun } from "../api/apiClient";
+import { EMPTY_FILTERS, keepKnown, parseQuery, toQuery } from "../urlState";
 
 const ViewStateContext = createContext(null);
 
@@ -31,7 +33,9 @@ const POLL_INTERVAL_MS = 2000;
 // RunStatus.FINISHED). Reaching one of these is how the poller knows to stop.
 const TERMINAL_STATUSES = ["completed", "completed_with_errors", "failed"];
 
-export const EMPTY_FILTERS = { from: "", to: "", source_type: "", stakeholder: "", topic: "", q: "" };
+// Typing a year into a date input fires a change per digit (0002, 0020,
+// 0202, 2026), so a date waits this long for the next one before loading.
+const DATE_DEBOUNCE_MS = 400;
 
 export function isFinished(run) {
   return !!run && TERMINAL_STATUSES.includes(run.status);
@@ -43,16 +47,19 @@ export function ViewStateProvider({ children }) {
   const [error, setError] = useState(null);
 
   // --- filters and comment search ---------------------------------------
-  const [filters, setFilterState] = useState(EMPTY_FILTERS);
+  // Filters and tab start from the URL, so a shared link opens the same view.
+  const [filters, setFilterState] = useState(() => parseQuery(window.location.search).filters);
+  const [view, setView] = useState(() => parseQuery(window.location.search).view);
   const [commentResults, setCommentResults] = useState(null);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentsError, setCommentsError] = useState(null);
 
-  // Each request takes a ticket; a response whose ticket is no longer the
-  // latest is dropped. Typing a year into a date input fires several
-  // changes, and a slow early response must not overwrite a later one.
-  const resultsTicket = useRef(0);
-  const commentsTicket = useRef(0);
+  // Each load aborts the one before it, and a response that lands anyway
+  // (read before the abort) is dropped: a slow early response must not
+  // overwrite a later one.
+  const resultsRequest = useRef(null);
+  const commentsRequest = useRef(null);
+  const lastLoaded = useRef(null); // the filters the load effect last saw
 
   // --- run state ------------------------------------------------------
   const [runs, setRuns] = useState([]);
@@ -67,22 +74,27 @@ export function ViewStateProvider({ children }) {
   const watchedRunId = useRef(null);
 
   const loadResults = useCallback(async (activeFilters = EMPTY_FILTERS) => {
-    const ticket = ++resultsTicket.current;
+    resultsRequest.current?.abort();
+    const { signal } = (resultsRequest.current = new AbortController());
     setLoading(true);
     setError(null);
     try {
-      const data = await getResults(activeFilters);
-      if (ticket === resultsTicket.current) setResults(data);
+      const data = await getResults(activeFilters, signal);
+      if (signal.aborted) return;
+      setResults(data);
+      // A link naming a source, stakeholder or topic the corpus lacks: drop it.
+      setFilterState((current) => keepKnown(current, data?.filter_options));
     } catch (err) {
       // Keep the last good results on screen; the error says why they didn't change.
-      if (ticket === resultsTicket.current) setError(err.message);
+      if (!signal.aborted) setError(err.message);
     } finally {
-      if (ticket === resultsTicket.current) setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, []);
 
   const loadComments = useCallback(async (activeFilters) => {
-    const ticket = ++commentsTicket.current;
+    commentsRequest.current?.abort();
+    const { signal } = (commentsRequest.current = new AbortController());
     setCommentsError(null);
     if (!activeFilters.q) {
       setCommentResults(null);
@@ -93,23 +105,36 @@ export function ViewStateProvider({ children }) {
     setCommentResults(null);
     setCommentsLoading(true);
     try {
-      const data = await searchComments(activeFilters);
-      if (ticket === commentsTicket.current) setCommentResults(data);
+      const data = await searchComments(activeFilters, signal);
+      if (!signal.aborted) setCommentResults(data);
     } catch (err) {
-      if (ticket === commentsTicket.current) {
+      if (!signal.aborted) {
         setCommentResults(null);
         setCommentsError(err.message);
       }
     } finally {
-      if (ticket === commentsTicket.current) setCommentsLoading(false);
+      if (!signal.aborted) setCommentsLoading(false);
     }
   }, []);
 
   // Results and comments follow the filters, including the first load.
+  // A newly set date waits for typing to pause; anything else loads at once.
   useEffect(() => {
-    loadResults(filters);
-    loadComments(filters);
+    const last = lastLoaded.current;
+    lastLoaded.current = filters;
+    const typing = last && ["from", "to"].some((key) => filters[key] && filters[key] !== last[key]);
+    const timer = setTimeout(() => {
+      loadResults(filters);
+      loadComments(filters);
+    }, typing ? DATE_DEBOUNCE_MS : 0);
+    return () => clearTimeout(timer);
   }, [filters, loadResults, loadComments]);
+
+  // The query string mirrors the filters and tab. replaceState, so a
+  // filter change doesn't add a Back-button step.
+  useEffect(() => {
+    window.history.replaceState(null, "", toQuery(filters, view) || window.location.pathname);
+  }, [filters, view]);
 
   /** Merge a change into the filters, e.g. setFilters({ stakeholder: "educators" }). */
   const setFilters = useCallback((patch) => setFilterState((current) => ({ ...current, ...patch })), []);
@@ -225,6 +250,8 @@ export function ViewStateProvider({ children }) {
     filters,
     setFilters,
     clearFilters,
+    view,
+    setView,
     commentResults,
     commentsLoading,
     commentsError,

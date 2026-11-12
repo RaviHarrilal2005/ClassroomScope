@@ -2,13 +2,15 @@
  * Filter panel: narrows the article table, the topic chart and the
  * comment search.
  *
- * Dropdowns and dates apply as soon as they change. The search box
- * applies on Enter (or its button), so each keystroke isn't a request.
+ * Dropdowns apply as soon as they change, dates once typing pauses
+ * (ViewStateContext.jsx). The search box applies on Enter (or its
+ * button), so each keystroke isn't a request. The filters and the tab
+ * are kept in the URL, so a filtered view can be shared or bookmarked.
  * The options come from the corpus (/results filter_options), not from
  * a list kept here.
  *
  * MVP (README, "MVP features — come back to these"): one value per
- * filter, and the filters are not kept in the URL.
+ * filter.
  */
 import { useEffect, useState } from "react";
 import { useViewState } from "../state/ViewStateContext";

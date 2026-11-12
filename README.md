@@ -131,7 +131,7 @@ The latest report: [docs/testing/e2e-test-report.md](docs/testing/e2e-test-repor
 cd frontend
 npm install
 npm run dev             # serves http://localhost:5173
-npm test                # the CSV export's tests (Node's built-in runner)
+npm test                # the CSV export's and URL state's tests (Node's built-in runner)
 ```
 
 Open `http://localhost:5173` with `python app.py` running — you should
@@ -149,10 +149,9 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 |---|---|---|---|
 | Filters | Corpus read from 4 tables and filtered in Python per request, behind a 60s cache (`orchestrator/corpus.py`) | Slows as the corpus grows; up to 60s stale after a run | Aggregation snapshot or a Postgres view/RPC |
 | Filters | One value per filter | Can't compare two stakeholders | Multi-select |
-| Filters | Not kept in the URL; nor is the Dashboard / Pipeline runs tab | A filtered view can't be shared, bookmarked or survive a refresh | Sync filters and view to the query string |
+| Filters | Filters and tab kept in the URL with `replaceState`; the tabs are buttons, not links | Back doesn't undo a filter change; a tab can't be opened in a new browser tab | `pushState` for deliberate changes; tabs as `<a href>` |
 | Filters | Topic options are the full list, not narrowed by the other filters | Some combinations give zero rows | Facet counts per option |
 | Filters | Classification merge: any classifier beats `baseline_keyword` | Hides disagreement between classifiers | Record a chosen classifier per article in the pipeline |
-| Filters | A request per filter change, no debounce or cancel (stale responses are dropped, not aborted) | Wasted requests while typing a date | Debounce dates; `AbortController` |
 | Article table | Every match rendered, no paging | Fine at hundreds, not thousands | Server-side paging |
 | Search | Case-insensitive substring, first match only | No ranking, stemming or phrases | Postgres full-text search (`tsvector`) with ranking |
 | Search | `*` acts as a wildcard (PostgREST has no escape for it) | `a*b` matches more than it says | Search through an RPC function |
@@ -170,7 +169,7 @@ MVPs: they work end to end, but each takes shortcuts on purpose. Design:
 | Pipeline runs | All 20 recent runs listed; Start a run and Run on 5 stored articles have no confirm step | Long list on phones; one click runs the real pipeline | Cap the list; confirm step, admin-only (TODO(auth)) |
 | Pipeline runs | Run on stored articles always takes the 5 oldest analysis-ready articles (`BACKLOG_RUN_SIZE`) | Re-analyses the same 5 every time; can't pick which or how many | Take a size, or specific article IDs, in the request |
 | Export | Article list only, the columns the table has; built in the browser | No full text, comments, per-classifier results, column picker, or other formats; nothing ties a file to a pipeline run | Each is an add-on with no schema change, except export-by-run (`run_id` on the results tables, open question 3 in `docs/pipeline-coordinator.md`) |
-| Frontend | Only `src/csv.js` has tests (`npm test`, Node's built-in runner); no component tests | UI regressions caught by eye | Vitest + Testing Library |
+| Frontend | Only `src/csv.js` and `src/urlState.js` have tests (`npm test`, Node's built-in runner); no component tests | UI regressions caught by eye | Vitest + Testing Library |
 | End-to-end checks (`backend/e2e`) | Run against the team's shared Supabase project: 5 stored articles per run, real collection only with `--collect` | Every run writes to team data: run history, re-written classifications, sometimes new articles | A separate test database, selected with `E2E_ENV_FILE=.env.test` |
 | End-to-end checks (`backend/e2e`) | Dashboard checks find elements by their visible text and layout | A redesign that changes that text breaks D1–D3. The October redesign did, and they were rewritten for it | `data-testid` attributes on the elements the tests use |
 
@@ -194,7 +193,8 @@ layer rather than fetching independently.
 
 1. **FilterPanel** — built (MVP, see the table above): date range,
    source type, stakeholder, topic and keyword search, with filter
-   state in `ViewStateContext.jsx`.
+   state in `ViewStateContext.jsx`, mirrored in the URL with the open
+   tab (`src/urlState.js`) so a filtered view can be shared.
 2. **VisualizationViews** — built (`VisualizationViews.jsx`, using
    Recharts): a sentiment donut, a top-topics bar chart, and sentiment
    split bars by stakeholder and by topic under a headline naming the

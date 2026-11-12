@@ -70,14 +70,17 @@ function toQuery(filters = {}) {
   return query ? `?${query}` : "";
 }
 
-/** Dashboard results for these filters (from, to, source_type, stakeholder, topic, q). */
-export async function getResults(filters) {
-  return request(`/results${toQuery(filters)}`);
+/**
+ * Dashboard results for these filters (from, to, source_type, stakeholder, topic, q).
+ * signal (an AbortSignal) cancels the request; the caller ignores what it then throws.
+ */
+export async function getResults(filters, signal) {
+  return request(`/results${toQuery(filters)}`, { signal });
 }
 
-/** Comments mentioning filters.q, on the articles the other filters allow. */
-export async function searchComments(filters) {
-  return request(`/search/comments${toQuery(filters)}`);
+/** Comments mentioning filters.q, on the articles the other filters allow. Takes a signal like getResults. */
+export async function searchComments(filters, signal) {
+  return request(`/search/comments${toQuery(filters)}`, { signal });
 }
 
 // --- pipeline runs ----------------------------------------------------
