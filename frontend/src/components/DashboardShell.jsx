@@ -13,6 +13,7 @@
  * Export is the article table's Export CSV button (src/csv.js).
  */
 import { useViewState } from "../state/ViewStateContext";
+import { tabHref } from "../urlState";
 import AdminConsole from "./AdminConsole";
 import ArticleTable from "./ArticleTable";
 import CommentResults from "./CommentResults";
@@ -26,7 +27,7 @@ const VIEWS = [
 ];
 
 export default function DashboardShell() {
-  const { view, setView } = useViewState(); // in the URL as ?view=runs
+  const { view, setView, filters } = useViewState(); // in the URL as ?view=runs
 
   return (
     <>
@@ -37,15 +38,20 @@ export default function DashboardShell() {
         </div>
         <nav className="tabs" aria-label="Views">
           {VIEWS.map((v) => (
-            <button
+            <a
               key={v.id}
-              type="button"
               className="tab"
-              aria-pressed={view === v.id}
-              onClick={() => setView(v.id)}
+              href={tabHref(window.location.pathname, filters, v.id)}
+              aria-current={view === v.id ? "page" : undefined}
+              onClick={(event) => {
+                // Modified and middle clicks keep the browser's own behaviour (new tab, new window).
+                if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                setView(v.id);
+              }}
             >
               {v.label}
-            </button>
+            </a>
           ))}
         </nav>
       </header>

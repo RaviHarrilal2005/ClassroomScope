@@ -20,7 +20,7 @@ import {
   useState,
 } from "react";
 import { getResults, getRun, getRuns, searchComments, startRun } from "../api/apiClient";
-import { EMPTY_FILTERS, keepKnown, parseQuery, toQuery } from "../urlState";
+import { EMPTY_FILTERS, keepKnown, parseQuery, tabHref, unknownFilters } from "../urlState";
 
 const ViewStateContext = createContext(null);
 
@@ -49,7 +49,8 @@ export function ViewStateProvider({ children }) {
   // --- filters and comment search ---------------------------------------
   // Filters and tab start from the URL, so a shared link opens the same view.
   const [filters, setFilterState] = useState(() => parseQuery(window.location.search).filters);
-  const [view, setView] = useState(() => parseQuery(window.location.search).view);
+  const [view, setViewState] = useState(() => parseQuery(window.location.search).view);
+  const [ignoredFilters, setIgnoredFilters] = useState({}); // link values the corpus lacks, for the notice
   const [commentResults, setCommentResults] = useState(null);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentsError, setCommentsError] = useState(null);
@@ -82,7 +83,9 @@ export function ViewStateProvider({ children }) {
       const data = await getResults(activeFilters, signal);
       if (signal.aborted) return;
       setResults(data);
-      // A link naming a source, stakeholder or topic the corpus lacks: drop it.
+      // A link naming a source, stakeholder or topic the corpus lacks: drop it, and say so.
+      const unknown = unknownFilters(activeFilters, data?.filter_options);
+      if (Object.keys(unknown).length) setIgnoredFilters(unknown);
       setFilterState((current) => keepKnown(current, data?.filter_options));
     } catch (err) {
       // Keep the last good results on screen; the error says why they didn't change.
@@ -134,12 +137,36 @@ export function ViewStateProvider({ children }) {
   // filter change doesn't add a Back-button step. Params the page doesn't
   // own (utm_*) are dropped; the #hash is kept.
   useEffect(() => {
-    window.history.replaceState(null, "", (toQuery(filters, view) || window.location.pathname) + window.location.hash);
+    window.history.replaceState(null, "", tabHref(window.location.pathname, filters, view) + window.location.hash);
   }, [filters, view]);
+
+  // Back and Forward re-read the URL. Only state is set here, so the
+  // effect above writes the same URL back and nothing new is pushed.
+  useEffect(() => {
+    const onPopState = () => {
+      const parsed = parseQuery(window.location.search);
+      setFilterState(parsed.filters);
+      setViewState(parsed.view);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   /** Merge a change into the filters, e.g. setFilters({ stakeholder: "educators" }). */
   const setFilters = useCallback((patch) => setFilterState((current) => ({ ...current, ...patch })), []);
   const clearFilters = useCallback(() => setFilterState(EMPTY_FILTERS), []);
+
+  // A tab is a page of its own, so switching pushes a history entry (Back returns to the last tab).
+  const setView = useCallback(
+    (next) => {
+      if (next === view) return;
+      window.history.pushState(null, "", tabHref(window.location.pathname, filters, next) + window.location.hash);
+      setViewState(next);
+    },
+    [filters, view]
+  );
+
+  const dismissIgnored = useCallback(() => setIgnoredFilters({}), []);
 
   const loadRuns = useCallback(async () => {
     try {
@@ -251,6 +278,8 @@ export function ViewStateProvider({ children }) {
     filters,
     setFilters,
     clearFilters,
+    ignoredFilters,
+    dismissIgnored,
     view,
     setView,
     commentResults,
