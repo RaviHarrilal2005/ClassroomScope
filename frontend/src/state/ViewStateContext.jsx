@@ -193,6 +193,7 @@ export function ViewStateProvider({ children }) {
           await selectRun(otherRun);
         } else {
           setRunsError(err.message);
+          await loadRuns();
         }
         return null;
       } finally {

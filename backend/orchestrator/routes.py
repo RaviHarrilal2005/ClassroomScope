@@ -12,7 +12,7 @@ few seconds while a run is active.
 """
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from .models import to_dict
 from .runner import BackgroundRunner, RunAlreadyActive
@@ -50,8 +50,9 @@ def create_runs_blueprint(runner: BackgroundRunner) -> Blueprint:
                 "active_run_id": exc.run_id,
             }), 409
         except Exception as exc:
-            # The run could not be created (e.g. the database rejected a stage
-            # row); the coordinator has logged it and marked the run failed.
+            # The run could not be created: the database is unreachable, or it
+            # rejected a stage row (then the coordinator has marked the run failed).
+            current_app.logger.exception("Could not start a run")
             return jsonify({"error": f"Could not start the run: {exc}"}), 500
         return jsonify(run_payload(run)), 202
 

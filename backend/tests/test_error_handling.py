@@ -7,8 +7,8 @@ from orchestrator.stages import (
     AGGREGATION,
     ANALYSIS_STAGES,
     CLASSIFICATION,
-    COMMENT_SENTIMENT,
     COLLECTION,
+    COMMENT_SENTIMENT,
     PIPELINE_ORDER,
     SECURITY,
     SENTIMENT,
@@ -153,6 +153,7 @@ def test_coordinator_error_never_leaves_a_run_stuck(make_coordinator, monkeypatc
     assert "Coordinator error" in run.notes and "database connection lost" in run.notes
     stages = stages_by_name(coordinator, run.id)
     assert not any(s.status in (StageStatus.PENDING, StageStatus.RUNNING) for s in stages.values())
+
 
 def test_a_rejected_stage_row_fails_the_run_instead_of_leaving_it_running(make_coordinator):
     # Run #66: the database's stage-name check had no 'comment_sentiment' yet
