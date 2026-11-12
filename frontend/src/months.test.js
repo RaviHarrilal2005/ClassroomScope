@@ -20,3 +20,7 @@ test("fills the months between, across a new year, with empty months", () => {
 test("no rows, no months", () => {
   assert.deepEqual(monthlyShares([]), []);
 });
+
+test("a malformed last label stops the fill instead of looping", () => {
+  assert.ok(monthlyShares([row("2026-09", 1, 0, 0), row("unknown", 1, 0, 0)]).length <= 1201);
+});

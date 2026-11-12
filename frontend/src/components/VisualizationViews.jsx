@@ -4,8 +4,9 @@
  * Each chart takes plain data rather than the /results payload, so the
  * caller decides what to draw.
  *
- * Every value is printed on the chart as text, so colour is never the
- * only signal — the same rule statusStyles.js follows for badges.
+ * Every value is printed as text (on the chart, or in the month-by-month
+ * list under the monthly one), so colour is never the only signal — the
+ * same rule statusStyles.js follows for badges.
  *
  * Sentiment is blue / light grey / red, not green / grey / red: red and
  * green are about ΔE 5 apart for a deuteranope, blue and red about 20.
@@ -203,7 +204,7 @@ const monthDate = (label) => new Date(`${label}-01T00:00`);
 /** "2026-09" -> "September 2026". */
 export const monthName = (label) => monthDate(label).toLocaleString("en", { month: "long", year: "numeric" });
 
-/** Under each column: its article count, the month, and the year at the start and every January. */
+/** Under each column: its article count, the month, and the year at both ends and every January. */
 function MonthTick({ x, y, payload, index, months }) {
   const { total } = months[index];
   const d = monthDate(payload.value);
@@ -211,7 +212,7 @@ function MonthTick({ x, y, payload, index, months }) {
     <text x={x} y={y} textAnchor="middle" className="recharts-text" style={{ fill: "var(--muted)" }}>
       <tspan x={x} dy="0.8em" style={total >= MIN_ARTICLES_TO_NAME ? { fill: "var(--text)" } : undefined}>{total}</tspan>
       <tspan x={x} dy="1.3em">{d.toLocaleString("en", { month: "short" })}</tspan>
-      {(index === 0 || d.getMonth() === 0) && <tspan x={x} dy="1.2em">{d.getFullYear()}</tspan>}
+      {(index === 0 || index === months.length - 1 || d.getMonth() === 0) && <tspan x={x} dy="1.2em">{d.getFullYear()}</tspan>}
     </text>
   );
 }

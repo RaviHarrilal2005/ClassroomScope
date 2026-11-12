@@ -17,7 +17,7 @@ export function monthlyShares(rows) {
     const r = byMonth.get(label) ?? { positive: 0, neutral: 0, negative: 0, total: 0 };
     const share = (field) => (r.total ? r[field] / r.total : 0);
     months.push({ label, total: r.total, positive: share("positive"), neutral: share("neutral"), negative: share("negative") });
-    if (label >= last) return months;
+    if (label >= last || months.length > 1200) return months; // 1200: a malformed label can't loop forever
     [y, m] = m === 12 ? [y + 1, 1] : [y, m + 1];
   }
 }

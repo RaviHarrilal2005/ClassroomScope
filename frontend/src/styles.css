@@ -346,6 +346,9 @@
 .chart-donut .recharts-surface {
   overflow: visible;
 }
+.recharts-wrapper g:focus {
+  outline: none;
+}
 .recharts-text {
   font-family: var(--font);
   font-size: var(--text-sm);
