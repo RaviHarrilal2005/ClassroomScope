@@ -1,7 +1,7 @@
 // Run with `npm test` (Node's built-in runner; no dependency).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { EMPTY_FILTERS, keepKnown, parseQuery, toQuery } from "./urlState.js";
+import { EMPTY_FILTERS, keepKnown, parseQuery, tabHref, toQuery, unknownFilters } from "./urlState.js";
 
 const filters = { from: "2026-09-01", to: "2026-10-31", source_type: "news_outlet", stakeholder: "students", topic: "T004", q: "cheating & tests" };
 
@@ -31,4 +31,13 @@ test("dropdown values the corpus lacks are dropped, but only once the options ar
   assert.deepEqual(keepKnown({ ...filters, topic: "T999" }, options), { ...filters, topic: "" });
   const bogus = { ...filters, source_type: "nope" };
   assert.equal(keepKnown(bogus, { source_types: [], stakeholders: [], topics: [] }), bogus);
+});
+
+test("unknown dropdown values are named, and tab links keep the filters", () => {
+  const options = { source_types: ["news_outlet"], stakeholders: ["students"], topics: [{ id: "T004", label: "Integrity" }] };
+  assert.deepEqual(unknownFilters(filters, options), {});
+  assert.deepEqual(unknownFilters({ ...filters, stakeholder: "x", topic: "T999" }, options), { stakeholder: "x", topic: "T999" });
+  assert.deepEqual(unknownFilters({ ...filters, topic: "T999" }, { source_types: [], stakeholders: [], topics: [] }), {});
+  assert.equal(tabHref("/app/", filters, "runs"), "/app/" + toQuery(filters, "runs"));
+  assert.equal(tabHref("/", EMPTY_FILTERS, "dashboard"), "/");
 });

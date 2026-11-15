@@ -21,7 +21,7 @@ def percent(share: float) -> int:
 
 
 def open_pipeline_runs(page):
-    page.get_by_role("navigation", name="Views").get_by_role("button", name="Pipeline runs").click()
+    page.get_by_role("navigation", name="Views").get_by_role("link", name="Pipeline runs").click()
 
 
 def card(page, heading: str):
