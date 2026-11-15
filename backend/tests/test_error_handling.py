@@ -1,11 +1,14 @@
 """Error handling: retry with backoff, fail-closed security, fallback, partial results."""
+import pytest
 from helpers import failing, stages_by_name
+from orchestrator import InMemoryRunStore
 from orchestrator.agents import StubAgent
 from orchestrator.stages import (
     AGGREGATION,
     ANALYSIS_STAGES,
     CLASSIFICATION,
     COLLECTION,
+    COMMENT_SENTIMENT,
     PIPELINE_ORDER,
     SECURITY,
     SENTIMENT,
@@ -150,3 +153,26 @@ def test_coordinator_error_never_leaves_a_run_stuck(make_coordinator, monkeypatc
     assert "Coordinator error" in run.notes and "database connection lost" in run.notes
     stages = stages_by_name(coordinator, run.id)
     assert not any(s.status in (StageStatus.PENDING, StageStatus.RUNNING) for s in stages.values())
+
+
+def test_a_rejected_stage_row_fails_the_run_instead_of_leaving_it_running(make_coordinator):
+    # Run #66: the database's stage-name check had no 'comment_sentiment' yet
+    # (a missing migration), so start_run raised after creating six stage rows
+    # and the run sat at 'running' with every stage 'pending'.
+    store = InMemoryRunStore()
+    create_stage = store.create_stage
+
+    def reject_comment_sentiment(run_id, stage_name):
+        if stage_name == COMMENT_SENTIMENT:
+            raise RuntimeError("violates check constraint pipeline_stage_runs_stage_name_check")
+        return create_stage(run_id, stage_name)
+
+    store.create_stage = reject_comment_sentiment
+    coordinator = make_coordinator(store=store)
+    with pytest.raises(RuntimeError, match="check constraint"):
+        coordinator.start_run()
+
+    run = store.list_runs()[0]
+    assert run.status == RunStatus.FAILED
+    assert "stage rows" in run.notes and "check constraint" in run.notes
+    assert all(s.status == StageStatus.SKIPPED for s in store.list_stages(run.id))
