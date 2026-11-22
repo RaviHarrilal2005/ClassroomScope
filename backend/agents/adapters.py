@@ -209,16 +209,13 @@ class SecurityAgent(Agent):
     corpus is twice that, so the default would quarantine the longest
     articles for length alone.
 
-    TWO THINGS THIS DOES NOT DO, both deliberate:
+    Quarantine decisions are persisted two ways: a row in
+    quarantined_content via agents/security/quarantine.py, and the
+    screened / quarantined flags on the article itself, which the read
+    policies use to hide it. Both also apply to comments.
 
-      * It does not persist the quarantine decision. The security
-        owners' agents/security/quarantine.py writes rejections to
-        quarantined_content, but over a direct Postgres connection
-        that the pipeline does not have, and that table was created
-        outside this repo's migrations. Decisions are logged at WARNING
-        and counted by reason in the returned summary, which is enough
-        to see what a run rejected and why, but they are not queryable
-        after the fact. See docs/pipeline-coordinator.md.
+    ONE THING THIS DOES NOT DO, deliberate:
+
       * It does not write the filter's redacted text back. The filter
         redacts emails, phone numbers, SSNs and street addresses in the
         text it returns, but analysis agents read clean_content straight
@@ -241,6 +238,13 @@ class SecurityAgent(Agent):
     # the work if a large collection lands at once, and the rest are
     # picked up on the next run.
     COMMENT_BATCH = 2_000
+
+    # Unscreened articles this run did not collect - a backlog, or rows
+    # inserted outside the pipeline. Normally finds nothing, since the
+    # per-run loop marks the articles it screened. Smaller than the
+    # comment batch because articles are far larger: the longest is
+    # 101,377 characters against a few hundred for a comment.
+    ARTICLE_BATCH = 500
 
     def __init__(self, max_length: Optional[int] = None) -> None:
         self.max_length = max_length or self.MAX_ARTICLE_LENGTH
@@ -298,6 +302,18 @@ class SecurityAgent(Agent):
                     ctx.run_id, len(rows_to_log),
                 )
                 
+        # Persist this run's verdicts. Without this the decision lives
+        # only in the run summary: the row stays visible and the next
+        # run screens it again from scratch.
+        now = datetime.now(timezone.utc).isoformat()
+        self._mark_articles(ctx, approved,
+                            {"screened": True, "quarantined": False, "screened_at": now})
+        # `missing` ids were appended to quarantined but could not be
+        # read, so there is no row to update.
+        self._mark_articles(ctx, [i for i in quarantined if i in found],
+                            {"screened": True, "quarantined": True, "screened_at": now})
+
+        article_sweep = self._screen_articles(ctx)
         comment_stats = self._screen_comments(ctx)
 
         return {
@@ -310,6 +326,10 @@ class SecurityAgent(Agent):
             "comments_screened": comment_stats["screened"],
             "comments_quarantined": comment_stats["quarantined"],
             "comment_quarantine_reasons": comment_stats["reasons"],
+            # Backlog sweep. These were not collected this run, so they
+            # are reported separately and never joined to approved_ids.
+            "articles_swept": article_sweep["screened"],
+            "articles_sweep_quarantined": article_sweep["quarantined"],
         }
 
     def _screen(self, text_filter: Any, text: str) -> Any:
@@ -320,6 +340,94 @@ class SecurityAgent(Agent):
             return text_filter.sanitize_text(text)
         finally:
             text_filter.MAX_TEXT_LENGTH = original
+
+    # --- articles ------------------------------------------------------
+
+    def _screen_articles(self, ctx: RunContext) -> Dict[str, Any]:
+        """Catch up unscreened articles. Never fails the stage.
+
+        The per-run screening in run() is fail-closed on purpose. This is
+        only a backlog sweep over rows this run did not collect, so a bug
+        here must not take the run down with it.
+        """
+        try:
+            return self._screen_articles_inner(ctx)
+        except Exception as exc:
+            logger.error("Run %s: article sweep failed: %s", ctx.run_id, exc)
+            return {"screened": 0, "quarantined": 0, "reasons": {}}
+
+    def _screen_articles_inner(self, ctx: RunContext) -> Dict[str, Any]:
+        from .security import quarantine, text_filter
+
+        pending = (
+            get_client()
+            .table("articles")
+            .select("id, title, clean_content")
+            .eq("screened", False)
+            .limit(self.ARTICLE_BATCH)
+            .execute()
+            .data
+            or []
+        )
+        if not pending:
+            return {"screened": 0, "quarantined": 0, "reasons": {}}
+
+        passed_ids: List[int] = []
+        failed: List[Any] = []
+        reasons: Dict[str, int] = {}
+
+        for row in pending:
+            text = f"{row.get('title') or ''}\n\n{row.get('clean_content') or ''}".strip()
+            # _screen, not sanitize_text: articles need the raised cap or
+            # the longest ones are quarantined for length alone.
+            result = self._screen(text_filter, text)
+            if result.passed:
+                passed_ids.append(row["id"])
+            else:
+                failed.append((row["id"], result, text))
+                reason = result.reason or "unknown"
+                reasons[reason] = reasons.get(reason, 0) + 1
+
+        now = datetime.now(timezone.utc).isoformat()
+        self._mark_articles(ctx, passed_ids,
+                            {"screened": True, "quarantined": False, "screened_at": now})
+        self._mark_articles(ctx, [i for i, _, _ in failed],
+                            {"screened": True, "quarantined": True, "screened_at": now})
+
+        if failed:
+            rows_to_log = quarantine.build_rows(failed, "articles", run_id=ctx.run_id)
+            if not quarantine.record_many(rows_to_log):
+                logger.warning(
+                    "Run %s: %d article quarantine row(s) were not persisted (S.8)",
+                    ctx.run_id, len(rows_to_log),
+                )
+
+        logger.info(
+            "Run %s: swept %d unscreened article(s), quarantined %d",
+            ctx.run_id, len(pending), len(failed),
+        )
+
+        return {"screened": len(pending), "quarantined": len(failed), "reasons": reasons}
+
+    @staticmethod
+    def _mark_articles(ctx: RunContext, article_ids: List[int],
+                       values: Dict[str, Any]) -> None:
+        """Write screening state back, in batches the API will accept."""
+        if not article_ids:
+            return
+        client = get_client()
+        for batch in _chunks(article_ids, 100):
+            try:
+                client.table("articles").update(values).in_(
+                    "id", list(batch)
+                ).execute()
+            except Exception as exc:
+                # Leaving them unscreened is safe: the next run sweeps
+                # them up again.
+                logger.warning(
+                    "Run %s: failed writing screening state for %d article(s): %s",
+                    ctx.run_id, len(batch), exc,
+                )
 
     # --- comments ------------------------------------------------------
 

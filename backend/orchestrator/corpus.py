@@ -84,7 +84,7 @@ def read_corpus(client: Any) -> List[Article]:
     """The analysable articles, each with its labels merged in (see the merge rules above)."""
     articles = page_all(lambda: client.table("articles")
                         .select("id, title, source, url, published_date, clean_content")
-                        .eq("llm_relevant", True).eq("processing_status", "success").order("id"))
+                        .eq("llm_relevant", True).eq("processing_status", "success").eq("quarantined", False).order("id"))
     classifications = page_all(lambda: client.table("classification_results")
                                .select("article_id, classifier, stakeholder_category, source_type, classified_at")
                                .order("id"))

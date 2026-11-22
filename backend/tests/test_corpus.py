@@ -18,7 +18,7 @@ def article(id, title="An article", date="2026-09-01T10:00:00+00:00", content: O
             relevant: Optional[bool] = True, status="success", **extra):
     return {"id": id, "title": title, "source": "Example News", "url": f"https://example.com/{id}",
             "published_date": date, "clean_content": content, "llm_relevant": relevant,
-            "processing_status": status, **extra}
+            "processing_status": status, "quarantined": False, **extra}
 
 
 def classified(article_id, classifier, stakeholder, source_type="blog", at="2026-09-18T00:00:00+00:00", id=None):
@@ -52,6 +52,16 @@ def test_only_analysable_articles_are_read():
     client = FakeSupabase(articles=[
         article(1), article(2, relevant=False), article(3, status="failed"), article(4, relevant=None),
     ])
+    assert [a["id"] for a in corpus.read_corpus(client)] == [1]
+
+
+def test_a_quarantined_article_is_not_read():
+    """
+    The security stage flags articles its filter rejects. The pipeline
+    connects with the secret key, which bypasses RLS, so the policy that
+    hides them does not apply here - the filter has to be in the query.
+    """
+    client = FakeSupabase(articles=[article(1), article(2, quarantined=True)])
     assert [a["id"] for a in corpus.read_corpus(client)] == [1]
 
 
