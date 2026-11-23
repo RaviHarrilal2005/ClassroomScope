@@ -8,6 +8,7 @@ from playwright.sync_api import expect
 from e2e import database
 from e2e.browser import CLIPPED_LABELS, screenshot, watch_console
 from e2e.settings import PAGE_TIMEOUT, RUN_TIMEOUT
+from orchestrator.stages import PIPELINE_ORDER
 
 
 def squash(text: str) -> str:
@@ -111,8 +112,11 @@ def test_d4_a_search_with_one_sentiment_labels_only_its_slice(page, frontend, ba
     page.goto(frontend.url, timeout=PAGE_TIMEOUT)
     page.get_by_placeholder("e.g. cheating").fill(title)
     page.get_by_role("button", name="Search").click()
-    expect(page.get_by_text(f"Share of the {body['analysed']} matching article(s)")).to_be_visible(timeout=PAGE_TIMEOUT)
-    expect(page.locator(".recharts-pie-label-text")).to_have_text(
+    # The stance and readers donuts sit beside it, so look inside this card only.
+    subtitle = page.get_by_text(f"Share of the {body['analysed']} matching article(s) with a sentiment result.")
+    expect(subtitle).to_be_visible(timeout=PAGE_TIMEOUT)
+    card = page.locator("section.card").filter(has=subtitle)
+    expect(card.locator(".recharts-pie-label-text")).to_have_text(
         [f"{name.capitalize()} {percent(share)}%" for name, share in shown.items()])
 
 
@@ -146,7 +150,7 @@ def test_d3_start_a_run_from_the_dashboard(page, frontend, api_run, results_dir,
     expect(status).to_have_text(re.compile("^(completed|completed with errors|failed)$"), timeout=RUN_TIMEOUT * 1000)
     expect(status).to_have_text("completed")
     statuses = page.locator("table.data-table tbody tr td:nth-child(2)")
-    expect(statuses).to_have_text(["succeeded"] * 7)
+    expect(statuses).to_have_text(["succeeded"] * len(PIPELINE_ORDER))
     expect(button).to_have_text("Start a run")
     expect(button).to_be_enabled()
     record_property("note", title.text_content() or "")

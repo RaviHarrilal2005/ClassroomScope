@@ -1,27 +1,26 @@
 # Pipeline Coordinator (SS-4)
 
 **Status: running end to end, verified against the live database.**
-The sequencing and failure handling are built and tested (98 tests).
-Collection, security, classification, topic and aggregation are real
-(sentiment too, where its libraries are installed); stance is still a
-stub — see
-[Which agents are real](#which-agents-are-real). The topic stage and
-collection's LLM relevance check were wired in after the verified run
-below, and have not had a live run yet.
+All eight stages have real agents: collection, security, classification,
+topic, sentiment, stance, comment sentiment and aggregation. Topic,
+sentiment, comment sentiment and stance fall back to stubs on machines
+missing their model, libraries or LLM key — see
+[Which agents are real](#which-agents-are-real). 234 offline tests.
 
-Verified with a secret key on 2026-09-29: a run fetched from GNews and
-the RSS feeds, inserted 104 new articles, preprocessed and screened
-them, classified 11 with the LLM classifier, and recorded all seven
-stages to `pipeline_runs` / `pipeline_stage_runs` — run #10, status
-`completed`. `GET /api/v1/runs` and `GET /api/v1/runs/<id>` read it
-back. See [Supabase run store](#supabase-run-store).
+Latest live run, 2026-11-22: run #80 collected 7 new articles, passed
+all 7 through security, and every stage succeeded, with RoBERTa
+sentiment, the Luna classifier and stance, and comment sentiment
+recorded in `pipeline_stage_runs.agent`. Topic ran as a stub there,
+because that machine had no BERTopic or no model file. `GET /api/v1/runs`
+and `GET /api/v1/runs/<id>` read runs back. See
+[Supabase run store](#supabase-run-store).
 
 ## What it does
 
 The coordinator runs the agents in a fixed order and records what
 happened at each step:
 
-**Collection → Security → Analysis (sentiment, topic, classification, stance, all at once) → Aggregation**
+**Collection → Security → Analysis (sentiment, topic, classification, stance, comment sentiment, all at once) → Aggregation**
 
 It moves *control*, not data. Agents read articles from the database and
 write their own results back; the coordinator only tells each agent when
@@ -36,7 +35,7 @@ to start, passes along article IDs, and records whether each stage worked.
 | Collection | 3 (waits 2s, then 4s) | Run **fails** — nothing to analyze. Later stages marked `skipped`. |
 | Security | 2 | Run **fails** and analysis is skipped, so unscreened content is never analyzed. |
 | Sentiment | 2, then fallback agent | Stage marked `failed`; the other analysis stages keep going. |
-| Topic / Classification / Stance | 2 | Stage marked `failed`; the other analysis stages keep going. |
+| Topic / Classification / Stance / Comment sentiment | 2 (classification then falls back to the keyword scorer) | Stage marked `failed`; the other analysis stages keep going. |
 | Aggregation | 2 | Run is `completed_with_errors`; analysis results are kept. |
 
 Each run ends in one of three states:
@@ -45,8 +44,13 @@ Each run ends in one of three states:
 - `completed_with_errors` — finished, but at least one stage failed (the rest of the results are kept)
 - `failed` — stopped early, or no analysis stage succeeded
 
-A run is never left stuck at `running`: if the coordinator itself hits an
-error, the run is recorded as `failed` with the error in its notes.
+A run is not left stuck at `running` while the server is up: if the
+coordinator itself hits an error, or the database rejects the run's
+stage rows when it starts, the run is recorded as `failed` with the
+error in its notes. (Run #66 sat at `running` until that second case
+was handled: the `comment_sentiment` stage name was missing from the
+table's check.) A server that stops mid-run is still a gap — see
+[Known limitations](#known-limitations-and-next-steps).
 
 Retry counts and wait times are starting values in `orchestrator/retry.py`.
 
@@ -74,9 +78,13 @@ backend/
     security/               sanitization filter + its adversarial suite
     classification/         stakeholder and source-type classifiers
     topic/                  saved BERTopic model + its offline tests
-    sentiment/              RoBERTa + VADER sentiment (SentimentAgent, wired into the registry)
-  tests/                    95 tests (more get added as features land)
+    sentiment/              article sentiment (RoBERTa, VADER fallback) and comment sentiment
+    stance/                 stance toward GAI in education (Luna LLM) + its validation kit
+    aggregation/            the dashboard's sentiment figures
+  tests/                    the offline suite (with agents/topic: 234 tests)
+  e2e/                      end-to-end checks against a real database, run only when named
   .env                      credentials — gitignored, never commit
+frontend/                   React dashboard — see [Front end](#front-end)
 docs/
   pipeline_tables.sql       the originally proposed SQL; see the note in its header
 supabase/
@@ -96,15 +104,18 @@ package without touching sequencing code.
 | Collection | **real** | `agents/collection/` — NewsAPI, GNews and eight RSS feeds, then dedupe, a keyword filter, an LLM relevance check and body extraction |
 | Security | **real** | `agents/security/` — sanitization filter; see below |
 | Classification | **real** | `agents/classification/` — LLM classifier when `TRUSSED_API_KEY` is set, keyword scorer otherwise or as its fallback |
-| Sentiment | real (stub where transformers/vaderSentiment are missing) | `agents/sentiment/sentiment_agent.py`, RoBERTa with VADER as the fallback |
-| Stance | stub | no implementation on any branch yet |
+| Sentiment | **real** where transformers and vaderSentiment are installed | `agents/sentiment/sentiment_agent.py` — RoBERTa (`roberta_news_v2`) with VADER as the fallback |
 | Topic | **real** where its model is | `agents/topic/` — topics from a saved BERTopic model, stored in the repo with Git LFS; a stub on machines without it — see below |
+| Stance | **real** where `TRUSSED_API_KEY` and `TRUSSED_BASE_URL` are set | `agents/stance/stance_agent.py` — favor / against / neutral toward GAI in education, from the Luna LLM |
+| Comment sentiment | **real** where transformers and vaderSentiment are installed | `agents/sentiment/comment_sentiment_agent.py` — Guardian reader comments that security passed |
 | Aggregation | **real** | `agents/aggregation/` — sentiment figures over the corpus; `/results` recomputes them per request and the stage stores nothing |
 
 `build_default_registry(live=...)` chooses. `live=None` (the default)
 decides from the environment: real agents when Supabase is configured,
 stubs otherwise, so the demo and the tests work on a machine with no
-`.env`. The stubbed stages stay stubbed whatever it is asked.
+`.env`. Even with `live=True`, a stage whose model, libraries or LLM key
+are missing stays a stub rather than fail every run. The run console's
+"stub" tag shows which stages were stubbed in a given run.
 
 ### Collection
 
@@ -122,7 +133,7 @@ It returns only the articles it stored **that analysis can actually
 use**: confirmed relevant by the LLM and preprocessed successfully. An
 article whose page could not be downloaded has no `clean_content`, and
 every analysis agent reads `clean_content`, so passing its ID on would
-just produce four failures further down.
+just produce a failure in every analysis stage further down.
 
 A run that passes nothing on finishes early, and its note says why,
 from the counts collection reports: "Fetched 12 article(s); all were
@@ -168,6 +179,12 @@ Two things it deliberately does not do:
   see the unredacted article. Screening currently decides pass or
   quarantine, nothing more.
 
+Security also screens reader comments: up to 2,000 unscreened comments
+per run (`COMMENT_BATCH`), marked `screened` and, if rejected,
+`quarantined`. Unlike articles this never fails the stage: an
+unscreened comment is already hidden by row-level security, so a bug
+there must not take article analysis down with it.
+
 ### Classification
 
 Writes `stakeholder_category` and `source_type` to
@@ -212,7 +229,42 @@ with `python -m pytest agents/topic`.
 news-trained RoBERTa model, with VADER as the fallback. It reads the
 run's articles from Supabase, skips ones that already have a result from
 that method, and writes `sentiment_results` itself. Nothing loads at
-import; the models load on first use.
+import; the models load on first use, and the first RoBERTa run
+downloads over 1 GB.
+
+### Stance
+
+`agents/stance/stance_agent.py` asks the Luna LLM (the classifier's
+model) which side each approved article comes down on toward
+**generative AI in education**: `favor`, `against` or `neutral`, the
+three labels of SemEval-2016 Task 6. Sentiment says how an article
+sounds; stance says which side it takes. It writes `stance_results`
+with the target and method on every row, so a second target can sit
+beside the first later, and skips articles that already have a row
+from that method. The confidence is the model's own estimate, not a
+calibrated probability.
+
+It needs `TRUSSED_API_KEY` and `TRUSSED_BASE_URL`; without them there
+is no fallback and the stage is a stub. To label every article with no
+stance yet, outside a run: `python -m agents.stance.stance_agent --save`.
+
+**Not yet checked against human labels.** `agents/stance/validation.py`
+samples articles to hand-label and scores them with Cohen's kappa; the
+steps are in `NEXT_STEPS.md`, section 2.
+
+### Comment sentiment
+
+`agents/sentiment/comment_sentiment_agent.py` labels the Guardian
+reader comments on the run's approved articles as positive, neutral or
+negative with a 3-class RoBERTa model (`hartmann_3`), and writes
+`comment_sentiment_results`. It only takes comments security passed
+(`screened`, not `quarantined`), saves every 256 comments, and skips
+comments that already have a result. Collection fetches the comments
+(`agents/collection/guardian_comments.py`).
+
+The stage name needed
+`supabase/migrations/20261108000200_comment_sentiment_stage.sql`, which
+has been applied; runs since #76 record it.
 
 ## Running it
 
@@ -257,7 +309,7 @@ Starting a run while another is active returns `409` with the active run's ID.
 
 ## Testing plan
 
-172 offline tests, none of which touch the network: stage order, the four
+234 offline tests, none of which touch the network: stage order, the five
 analysis agents running at the same time, each failure rule, the API,
 the Supabase store against a fake client, the adapters against fake
 agent modules, and the end-to-end suite's own safety rails. The suite
@@ -318,7 +370,7 @@ anything else as a failure):
 |---|---|
 | Collection | `{"article_ids": [...]}` — IDs of the articles stored this run |
 | Security | `{"approved_ids": [...], "quarantined_ids": [...]}` — approved IDs must come from the collected ones |
-| Sentiment / Topic / Classification / Stance | any dict, e.g. `{"processed": 42}` |
+| Sentiment / Topic / Classification / Stance / Comment sentiment | any dict, e.g. `{"processed": 42}` |
 | Aggregation | any dict |
 
 Example:
@@ -339,6 +391,42 @@ class SentimentAgent(Agent):
 # registry.py
 registry.register(SENTIMENT, SentimentAgent(), fallback=agents.stub_fallback(SENTIMENT))
 ```
+
+## Front end
+
+`frontend/` is a React (Vite) dashboard that reads everything through
+the Flask API; it never talks to Supabase. Two tabs:
+
+- **Dashboard** — the filter panel (date range, source type,
+  stakeholder, topic, keyword), a headline naming the most negative
+  stakeholder and topic, the sentiment, stance and "How readers react"
+  donuts, the top-topics bar, "Sentiment by month" (by quarter past 20
+  months), sentiment split by stakeholder and by topic, the article
+  table with Export CSV, and comment search. Data: `GET /api/v1/results`
+  and `GET /api/v1/search/comments`, re-fetched when a filter changes.
+- **Pipeline runs** (`components/AdminConsole.jsx`) — the run list
+  with each stage's status, agent and "stub" tag, and buttons to start
+  a run or a run on 5 stored articles (`POST /api/v1/runs`, with
+  `{"backlog": true}` for the second). Data: `GET /api/v1/runs` and
+  `GET /api/v1/runs/<id>`.
+
+Layers, so each change has one place to go:
+
+| Layer | File | Does |
+|---|---|---|
+| Data access | `src/api/apiClient.js` | the only code that calls `fetch`; base URL from `VITE_API_URL` (must end in `/api/v1`, default `http://localhost:5000/api/v1`) |
+| State | `src/state/ViewStateContext.jsx` | filters, open tab, results, loading and errors; filters and tab mirrored in the URL (`src/urlState.js`) so a view can be shared |
+| Presentation | `src/components/`, `src/styles.css` | the views; charts with Recharts; the dark theme follows the OS setting |
+
+Run it with `npm install` and `npm run dev` in `frontend/`, alongside
+`python app.py` (serves http://localhost:5173). `npm test` runs the 20
+tests for the CSV export, URL state and month binning with Node's
+built-in runner. The end-to-end suite (`backend/e2e/`) checks the
+dashboard in Chromium against the real API.
+
+The run console starts **real** runs on whatever database the backend
+points at, and there is no login (dropped from scope on 2026-11-08) —
+see [Known limitations](#known-limitations-and-next-steps).
 
 ## Supabase run store
 
@@ -410,8 +498,8 @@ read, list, and update, for both runs and stages, with timestamps
 parsing back to `datetime`, including the four analysis stages writing
 concurrently.
 
-**Any `RunStore` must be thread-safe.** The coordinator runs the four
-analysis stages in a `ThreadPoolExecutor`, so all four update their rows
+**Any `RunStore` must be thread-safe.** The coordinator runs the five
+analysis stages in a `ThreadPoolExecutor`, so all five update their rows
 at the same time. `SupabaseRunStore` holds one HTTP connection, which
 cannot be shared across threads, so every method takes a lock; without
 it the parallel stages all fail with `ReadError: [WinError 10035]` while
@@ -478,14 +566,18 @@ Two smaller mismatches are left open for the team:
 - **`articles_collected` defaults to 0**, so "collected nothing" and
   "not known yet" cannot be told apart.
 
-Tests for the Supabase store are still to be written, including one that
-fails if the deployed schema and the code drift apart.
+`tests/test_supabase_store.py` covers the store against a fake client,
+and `tests/test_schema_sync.py` keeps `pipeline_tables.sql` and the code
+in step. Nothing yet fails when the *deployed* schema drifts from the
+code — a missing migration still shows up only as a failed run.
 
 ## Known limitations and next steps
 
-- **Stance is still a stub**, and sentiment is one wherever
-  `transformers` or `vaderSentiment` is not installed.
-  See [Which agents are real](#which-agents-are-real).
+- **Stance labels are unvalidated.** Nobody has compared them with
+  human labels yet; the kit is ready (see [Stance](#stance)). Sentiment
+  and comment sentiment are stubs wherever `transformers` or
+  `vaderSentiment` is not installed, and stance wherever the LLM key is
+  missing. See [Which agents are real](#which-agents-are-real).
 - **The topic stage only runs where its model file has been restored.**
   Everywhere else it is a stub, so `topic_results` only grows from runs
   on a machine that has the file.
@@ -530,7 +622,7 @@ fails if the deployed schema and the code drift apart.
    If nothing should be stored before screening, collection would hand
    over unsaved articles instead — a small change to the collection and
    security contracts.
-3. **Add `run_id` to the four results tables?** It would let us filter
+3. **Add `run_id` to the results tables?** It would let us filter
    results by run and clean up a failed run's partial output. Commented
    out at the bottom of `pipeline_tables.sql`. Now that real agents
    write real rows, this is the difference between "243 topic results"
@@ -539,7 +631,7 @@ fails if the deployed schema and the code drift apart.
    the original proposal and names the last stage `aggregation` rather
    than `aggregate`. The deployed table had never been updated to match;
    the migration in `supabase/migrations/` has now been applied and runs
-   record all seven stages. See
+   record every stage (eight, since `comment_sentiment`). See
    [Supabase run store](#supabase-run-store).
 5. **Where do quarantine decisions go?** Security screening drops
    articles from `approved_ids` and logs why, but nothing records it.
