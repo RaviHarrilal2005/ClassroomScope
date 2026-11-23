@@ -1,6 +1,6 @@
 # End-to-end test report: integrated pipeline
 
-**Date:** 2026-11-22 21:13 · **Commit:** `docs-orchestration-refresh` @ `d45dab4` · **Run by:** Ravi (WBS: lead end-to-end testing)
+**Date:** 2026-11-22 21:13 · **Commit:** `docs-orchestration-refresh` @ `d45dab4` plus the D3/D4 test fix, uncommitted at run time (later `c659b9d`) · **Run by:** Ravi (WBS: lead end-to-end testing)
 
 ## Summary
 
@@ -18,8 +18,8 @@ Run #83 had no stub stages: topic, sentiment, stance and comment sentiment
 all ran for real. An earlier pass the same evening (results folder
 `2026-11-22_211127`) failed two checks, D3 and D4, because the tests were
 stale, not the app. D3 expected 7 stage rows, now 8. D4's text locator also
-matched the new stance donut's subtitle. Both tests were fixed in commit
-`c659b9d`, and the re-run passed 12 of 12 (2 skipped: the `--collect`
+matched the new stance donut's subtitle. With both tests fixed in the
+working tree (later committed as `c659b9d`), the re-run passed 12 of 12 (2 skipped: the `--collect`
 checks, which only run with that flag).
 
 ## Scope
@@ -85,7 +85,7 @@ offline tests, which never touch the network.
 
 ## Problems found
 
-### 1. A run that stored new articles says "No new articles were collected" (low)
+### 1. A run that stored new articles says "No new articles were collected" (low; fixed)
 
 **What happens:** when collection fetches articles it hasn't seen before
 but none of them are relevant, it stores them and reports no usable
@@ -105,6 +105,9 @@ did the same with 9 articles.
 **Suggested fix:** have the note say how many articles were stored and
 how many were relevant, for example "9 new articles, none relevant"
 (item 4 in `NEXT_STEPS.md`).
+
+**Fixed:** since commit `2590f81` the note reads "Stored N new
+article(s); none were relevant."
 
 ### 2. The dashboard's article note gives a stale count (low; gone since the redesign)
 
@@ -141,10 +144,10 @@ its run finishes (commit `6569a39`).
   the app never closes. They're harmless today and would go away with a
   supabase-py upgrade and closing clients on shutdown.
 
-## Rerun after the dashboard redesign (2026-10-13)
+## History: rerun after the dashboard redesign (2026-10-13)
 
-The dashboard MVP (filters, keyword search, redesign) merged after this
-report's first run, and D1 failed against it: the topic line, the axis
+The dashboard MVP (filters, keyword search, redesign) merged after the
+report's first run (October 8), and D1 failed against it: the topic line, the axis
 labels and the Pipeline runs console had all changed. D1–D3 and R1 were
 rewritten for it, then run again: **R1, D1, D2 and D3 pass** (branch
 `fix-e2e-dashboard-selectors`, runs #49 and #50, both `completed`, 7
@@ -165,7 +168,7 @@ D2 and D3 now also fail at once on a run that ends `completed with
 errors` or `failed`, instead of waiting five minutes, and D3 waits for the
 console to load before clicking.
 
-## Aggregation lands (2026-10-13)
+## History: aggregation lands (2026-10-13)
 
 The aggregation stage is real now, and the dashboard's sentiment donut
 shows `sentiment_results` instead of hardcoded figures. R1 checks the
@@ -175,9 +178,10 @@ the same numbers. The full suite passed, 11 of 11 without `--collect`
 (runs #51 and #52, both `completed`, with aggregation `succeeded`): 323
 analysed articles, 72% neutral, 15% negative, 12% positive.
 
-P2's note now names the stages the registry actually stubbed. On the
-machine that ran it, that was sentiment (its libraries are not installed
-there) and stance.
+P2's note began naming the stages the registry actually stubbed. On the
+machine that ran it then, that was sentiment (its libraries were not
+installed there) and stance (not yet built). The 2026-11-22 runs stubbed
+none.
 
 ## Database footprint
 
@@ -208,16 +212,15 @@ run also re-writes the LLM classifications of the same 5 stored articles.
    relevant and fully downloaded, with their topic rows. Every run over
    stored articles picks the first 5 such articles, and the dashboard
    checks run before any run has written a topic row.
-2. **Make the run note tell "nothing fetched" apart from "fetched, none
-   relevant"** (problem 1).
-3. **Partly done.** The October redesign was handled (see the rerun below).
-   On 2026-11-22, D3 and D4 broke again after the pipeline gained a stage
-   and the stance donut was added, because both still find elements by
-   visible text. `data-testid` attributes on those elements would make
+2. **Partly done.** The October redesign was handled (see the 2026-10-13 rerun above).
+   On 2026-11-22, D3 and D4 broke again: D3 had the stage count
+   hardcoded at 7 (it now uses `PIPELINE_ORDER`), and D4 found the
+   sentiment donut's subtitle by visible text, which the new stance
+   donut's subtitle also matched. `data-testid` attributes on those elements would make
    them survive (see the README's "MVP features" table).
-4. **Run `python -m pytest e2e` before merging any PR that touches the
+3. **Run `python -m pytest e2e` before merging any PR that touches the
    pipeline or the dashboard.** The 2026-11-22 run took 1 minute 11 seconds.
-5. **Topic owner:** look at the unassigned rate (252 unassigned, 199 with a
+4. **Topic owner:** look at the unassigned rate (252 unassigned, 199 with a
    topic in the latest run), perhaps starting from the `auto-v1` candidate.
 
 ![The dashboard during the run, with real topic counts](img/D1-dashboard.png)

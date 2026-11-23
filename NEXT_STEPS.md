@@ -106,7 +106,7 @@ Open: nobody has checked the stance labels against human ones yet
 3. `python -m agents.stance.validation score stance_sample_labelled.csv` prints
    accuracy, Cohen's kappa, the confusion matrix, and how many rows were skipped.
 
-## 3. Aggregation: done, check it on a real run (Ravi)
+## 3. Aggregation: done (Ravi)
 
 `/api/v1/results` now serves real sentiment figures for the filtered
 articles: the share (the donut), the same broken down by month, topic
@@ -117,7 +117,8 @@ the monthly, stakeholder and topic breakdowns under a headline, and the
 article table has a sentiment column. Still open: a snapshot per run
 (README, "MVP features").
 
-To check it: a run shows aggregation `succeeded`, and
+Checked on real runs: aggregation succeeded in runs #80, #83 and #84
+(2026-11-22). To check it again: a run shows aggregation `succeeded`, and
 `python -m pytest e2e -k "r1 or d1"` compares the API, the donut and
 the headline with `sentiment_results`.
 

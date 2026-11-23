@@ -115,8 +115,7 @@ def test_d4_a_search_with_one_sentiment_labels_only_its_slice(page, frontend, ba
     # The stance and readers donuts sit beside it, so look inside this card only.
     subtitle = page.get_by_text(f"Share of the {body['analysed']} matching article(s) with a sentiment result.")
     expect(subtitle).to_be_visible(timeout=PAGE_TIMEOUT)
-    card = page.locator("section.card").filter(has=subtitle)
-    expect(card.locator(".recharts-pie-label-text")).to_have_text(
+    expect(card(page, "Sentiment toward GAI in education").locator(".recharts-pie-label-text")).to_have_text(
         [f"{name.capitalize()} {percent(share)}%" for name, share in shown.items()])
 
 

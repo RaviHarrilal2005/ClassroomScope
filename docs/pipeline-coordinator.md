@@ -47,9 +47,9 @@ Each run ends in one of three states:
 A run is not left stuck at `running` while the server is up: if the
 coordinator itself hits an error, or the database rejects the run's
 stage rows when it starts, the run is recorded as `failed` with the
-error in its notes. (Run #66 sat at `running` until that second case
-was handled: the `comment_sentiment` stage name was missing from the
-table's check.) A server that stops mid-run is still a gap — see
+error in its notes. (The second case used to leave a run at `running`:
+run #66 sat there, because the table's check lacked the
+`comment_sentiment` stage name, until it was closed by hand.) A server that stops mid-run is still a gap — see
 [Known limitations](#known-limitations-and-next-steps).
 
 Retry counts and wait times are starting values in `orchestrator/retry.py`.
@@ -113,8 +113,10 @@ package without touching sequencing code.
 `build_default_registry(live=...)` chooses. `live=None` (the default)
 decides from the environment: real agents when Supabase is configured,
 stubs otherwise, so the demo and the tests work on a machine with no
-`.env`. Even with `live=True`, a stage whose model, libraries or LLM key
-are missing stays a stub rather than fail every run. The run console's
+`.env`. Even with `live=True`, topic, sentiment and comment sentiment
+stay stubs where their model or libraries are missing, and stance where
+the LLM key is, rather than fail every run. (Without the LLM key,
+classification uses its keyword scorer and collection fails up front.) The run console's
 "stub" tag shows which stages were stubbed in a given run.
 
 ### Collection
@@ -164,15 +166,15 @@ longest article today is 101,377, so `SecurityAgent` raises the cap to
 200,000 for article bodies and leaves the filter's own default
 untouched for other callers.
 
-Two things it deliberately does not do:
+Rejections, of articles and comments, are logged at WARNING, counted
+by reason in the stage's summary, and written to the
+`quarantined_content` table through `agents/security/quarantine.py`
+(the shared Supabase client). That write is best-effort: if it fails,
+the stage logs a warning and carries on. The table has no migration in
+this repo.
 
-- **Quarantine decisions are not persisted.** They are logged at
-  WARNING and counted by reason in the stage's summary, so you can see
-  what a run rejected and why, but you cannot query it afterwards. The
-  security owners' `agents/security/quarantine.py` writes rejections to
-  a `quarantined_content` table, which exists in the database, but over
-  a direct Postgres connection the pipeline does not have, and the
-  table has no migration in this repo.
+One thing it deliberately does not do:
+
 - **The redacted text is not written back.** The filter redacts emails,
   phone numbers, SSNs and addresses in the text it returns, but analysis
   agents read `clean_content` straight from the database and so still
@@ -259,8 +261,9 @@ reader comments on the run's approved articles as positive, neutral or
 negative with a 3-class RoBERTa model (`hartmann_3`), and writes
 `comment_sentiment_results`. It only takes comments security passed
 (`screened`, not `quarantined`), saves every 256 comments, and skips
-comments that already have a result. Collection fetches the comments
-(`agents/collection/guardian_comments.py`).
+comments that already have a result. No run stage fetches comments:
+`python -m agents.collection.guardian_comments` does, as a separate
+pass after collection.
 
 The stage name needed
 `supabase/migrations/20261108000200_comment_sentiment_stage.sql`, which
@@ -495,8 +498,8 @@ URL returns an HTML login page, which surfaces as a confusing
 
 Every `RunStore` method round-trips against the real database: create,
 read, list, and update, for both runs and stages, with timestamps
-parsing back to `datetime`, including the four analysis stages writing
-concurrently.
+parsing back to `datetime`, including the (then four) analysis stages
+writing concurrently.
 
 **Any `RunStore` must be thread-safe.** The coordinator runs the five
 analysis stages in a `ThreadPoolExecutor`, so all five update their rows
@@ -581,9 +584,8 @@ code — a missing migration still shows up only as a failed run.
 - **The topic stage only runs where its model file has been restored.**
   Everywhere else it is a stub, so `topic_results` only grows from runs
   on a machine that has the file.
-- **The security filter's quarantine decisions are not stored anywhere
-  queryable** by the pipeline, and the filter misses full names (1 of
-  45 adversarial cases).
+- **The security filter misses full names** (1 of 45 adversarial
+  cases), and `quarantined_content` has no migration in this repo.
 - **A collection retry after a late failure collects nothing.** If the
   stage fails after storing its articles (the LLM check, say), the
   retry finds them all already stored and returns no articles, so the
@@ -633,14 +635,10 @@ code — a missing migration still shows up only as a failed run.
    the migration in `supabase/migrations/` has now been applied and runs
    record every stage (eight, since `comment_sentiment`). See
    [Supabase run store](#supabase-run-store).
-5. **Where do quarantine decisions go?** Security screening drops
-   articles from `approved_ids` and logs why, but nothing records it.
-   A `quarantined_content` table now exists in the database, and
-   `agents/security/quarantine.py` writes to it over a direct Postgres
-   connection, while the pipeline only has the Supabase client. Picking
-   one path, and committing a migration for the table, would make "what
-   did screening reject last night, and was it right?" answerable.
-   Needed before anyone trusts the filter's false-positive rate.
+5. **Quarantine decisions — mostly resolved.** The security stage
+   writes them to `quarantined_content` through the Supabase client
+   (`agents/security/quarantine.py`). Still missing: a migration for
+   that table in this repo.
 6. **Should screening write back the redacted text?** The filter
    already produces it; analysis agents currently read the unredacted
    `clean_content`. Writing it to a new column would mean PII never
