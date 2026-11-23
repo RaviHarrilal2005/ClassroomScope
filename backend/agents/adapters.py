@@ -209,16 +209,14 @@ class SecurityAgent(Agent):
     corpus is twice that, so the default would quarantine the longest
     articles for length alone.
 
-    TWO THINGS THIS DOES NOT DO, both deliberate:
+    Rejections are logged at WARNING, counted by reason in the returned
+    summary, and written to quarantined_content through
+    agents/security/quarantine.py (best-effort: a failed write is a
+    warning, not a failed stage). That table was created outside this
+    repo's migrations. See docs/pipeline-coordinator.md.
 
-      * It does not persist the quarantine decision. The security
-        owners' agents/security/quarantine.py writes rejections to
-        quarantined_content, but over a direct Postgres connection
-        that the pipeline does not have, and that table was created
-        outside this repo's migrations. Decisions are logged at WARNING
-        and counted by reason in the returned summary, which is enough
-        to see what a run rejected and why, but they are not queryable
-        after the fact. See docs/pipeline-coordinator.md.
+    ONE THING THIS DOES NOT DO, deliberately:
+
       * It does not write the filter's redacted text back. The filter
         redacts emails, phone numbers, SSNs and street addresses in the
         text it returns, but analysis agents read clean_content straight

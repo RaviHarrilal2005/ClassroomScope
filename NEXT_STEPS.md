@@ -65,17 +65,16 @@ Two words you'll see on the dashboard:
 | Comment sentiment | real (needs `transformers`): readers' comments, after security screens them | Deena |
 | Aggregation | real: the dashboard's sentiment figures | Ravi |
 
-## 1. Sentiment: done, check it on a real run (Deena)
+## 1. Sentiment: done (Deena)
 
 `SentimentAgent` is registered in `orchestrator/registry.py`: RoBERTa
 first, VADER if the model can't load. It stays a stub where
 `transformers` or `vaderSentiment` isn't installed.
 
-To check it: `python run_pipeline.py --live --backlog --limit 5` should
-show sentiment as `succeeded`, and `sentiment_results` should have new
-rows for those 5 articles. The first RoBERTa run downloads the model
-(over 1 GB). VADER was checked against real articles; the RoBERTa path
-has not been run through the pipeline yet.
+Checked on real runs: run #80 (2026-11-22, 7 newly collected articles)
+and the e2e runs #83 and #84 recorded sentiment as `succeeded` with the
+`sentiment_roberta_news_v2` agent. The first RoBERTa run on a machine
+downloads the model (over 1 GB).
 
 ## 2. Stance and comment sentiment: done (Ravi, Deena)
 
@@ -107,7 +106,7 @@ Open: nobody has checked the stance labels against human ones yet
 3. `python -m agents.stance.validation score stance_sample_labelled.csv` prints
    accuracy, Cohen's kappa, the confusion matrix, and how many rows were skipped.
 
-## 3. Aggregation: done, check it on a real run (Ravi)
+## 3. Aggregation: done (Ravi)
 
 `/api/v1/results` now serves real sentiment figures for the filtered
 articles: the share (the donut), the same broken down by month, topic
@@ -118,7 +117,8 @@ the monthly, stakeholder and topic breakdowns under a headline, and the
 article table has a sentiment column. Still open: a snapshot per run
 (README, "MVP features").
 
-To check it: a run shows aggregation `succeeded`, and
+Checked on real runs: aggregation succeeded in runs #80, #83 and #84
+(2026-11-22). To check it again: a run shows aggregation `succeeded`, and
 `python -m pytest e2e -k "r1 or d1"` compares the API, the donut and
 the headline with `sentiment_results`.
 
@@ -134,14 +134,7 @@ shortcuts are in the MVP table in README.md.
 
 ## Still open
 
-- **Run the backend e2e suite once against the shared database.**
-  `backend/e2e/test_3_dashboard.py` now expects 5 charts. From `backend/`,
-  run `python -m pytest e2e`. It writes to the shared Supabase project
-  (see the end-to-end section of the README). Afterwards refresh
-  `docs/testing/e2e-test-report.md`, which predates the 5-chart check.
 - **Hand-label about 50 stance articles and compute Cohen's kappa.**
   Nobody has checked the stance labels against human ones yet.
-- **Run the RoBERTa sentiment path through a full pipeline run.** Only
-  VADER has been checked on real articles (section 1).
 - **The known shortcuts** are the MVP table in README.md. Each row names
   the shortcut, its ceiling, and the better version.

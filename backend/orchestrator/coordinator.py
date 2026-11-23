@@ -1,7 +1,7 @@
 """
 Pipeline coordinator — runs the agents in order and handles failures.
 
-    Collection -> Security -> Analysis (4 agents in parallel) -> Aggregation
+    Collection -> Security -> Analysis (5 agents in parallel) -> Aggregation
 
 Failure rules
   Collection   Critical. Retried with backoff; if it still fails the run
